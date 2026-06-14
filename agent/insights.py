@@ -1,0 +1,126 @@
+import json
+
+from .client import _get_client
+from .context import _build_context
+from .prompt import SYSTEM_PROMPT
+
+
+def generate_insights(product, top_actions, drop_offs, active_users, avg_session, patterns):
+    context = _build_context(product, top_actions, drop_offs, active_users, avg_session, patterns, [])
+
+    prompt = f"""You are ShipSense. Analyze this product data and give ONE sharp insight with ONE recommendation.
+
+Product Data:
+{context}
+
+Respond with valid JSON only, in this exact format:
+{{
+  "what_i_see": "...",
+  "why_it_matters": "...",
+  "what_to_do": "...",
+  "effort": "Low/Medium/High",
+  "impact": "Low/Medium/High",
+  "title": "short action title"
+}}"""
+
+    try:
+        llm = _get_client()
+        if not llm:
+            raise RuntimeError("No API key")
+        resp = llm.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.4,
+            response_format={"type": "json_object"},
+        )
+        result = json.loads(resp.choices[0].message.content)
+
+        summary = (
+            f"WHAT I SEE:\n{result.get('what_i_see', '')}\n\n"
+            f"WHY IT MATTERS:\n{result.get('why_it_matters', '')}\n\n"
+            f"WHAT TO DO:\n{result.get('what_to_do', '')}\n\n"
+            f"EFFORT: {result.get('effort', 'Medium')}\n"
+            f"IMPACT: {result.get('impact', 'High')}"
+        )
+        actions = [{
+            "title": result.get("title", "Address the biggest drop-off"),
+            "description": result.get("what_to_do", ""),
+            "effort": result.get("effort", "Medium"),
+            "impact": result.get("impact", "High"),
+            "priority": 1,
+        }]
+
+        return {"summary": summary, "recommended_actions": actions}
+
+    except Exception:
+        return _fallback_insights(product, top_actions, drop_offs, active_users, avg_session, patterns)
+
+
+def _fallback_insights(product, top_actions, drop_offs, active_users, avg_session, patterns):
+    top_action_name = top_actions[0]["action"] if top_actions else "the core feature"
+    top_action_pct = top_actions[0]["frequency"] if top_actions else "0%"
+    biggest_drop = drop_offs[0] if drop_offs else None
+
+    lines = []
+    lines.append("WHAT I SEE:")
+    if biggest_drop:
+        lines.append(
+            f"{biggest_drop['drop_off_rate']} of users drop off at "
+            f"'{biggest_drop['step']}' and never reach the next step. "
+            f"Only {top_action_pct} of users perform the top action "
+            f"('{top_action_name}')."
+        )
+    else:
+        lines.append(
+            f"{top_action_pct} of users perform '{top_action_name}', "
+            f"but there's not enough data to identify where they drop off."
+        )
+
+    lines.append("")
+    lines.append("WHY IT MATTERS:")
+    if biggest_drop:
+        lines.append(
+            f"Every user who drops off at '{biggest_drop['step']}' is a potential "
+            f"active user you'll never get back. Fixing this one step has the "
+            f"highest leverage on your retention."
+        )
+    else:
+        lines.append(
+            f"Without enough user data, you're flying blind. "
+            f"Get more traffic through your core flow so ShipSense can "
+            f"identify the real friction points."
+        )
+
+    lines.append("")
+    lines.append("WHAT TO DO:")
+    if biggest_drop:
+        lines.append(
+            f"Cut or simplify the '{biggest_drop['step']}' step. "
+            f"If users can skip it, make it optional. "
+            f"If they can't, reduce the form fields to the absolute minimum."
+        )
+    else:
+        lines.append(
+            f"Drive users to '{product['core_action']}' and let ShipSense "
+            f"analyze their behavior. Share your product link in channels "
+            f"where your target users already hang out."
+        )
+
+    lines.append("")
+    lines.append(f"EFFORT: {'Low' if biggest_drop else 'Medium'}")
+    lines.append(f"IMPACT: High")
+
+    summary = "\n".join(lines)
+
+    actions = [{
+        "title": f"Fix '{biggest_drop['step']}' drop-off" if biggest_drop else "Drive traffic to core flow",
+        "description": lines[lines.index("WHAT TO DO:") + 1] if "WHAT TO DO:" in lines else "",
+        "effort": "Low" if biggest_drop else "Medium",
+        "impact": "High",
+        "priority": 1,
+    }]
+
+    return {"summary": summary, "recommended_actions": actions}
