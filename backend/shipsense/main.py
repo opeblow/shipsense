@@ -22,7 +22,13 @@ import agent
 
 load_dotenv()
 
-app = FastAPI(title="ShipSense API", version="0.1.0")
+app = FastAPI(
+    title="ShipSense API",
+    description="AI Product Analytics Agent",
+    version="0.1.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
 
 app.add_middleware(
     CORSMiddleware,
