@@ -37,6 +37,7 @@ app.add_middleware(
         "https://shipsense-knrs.onrender.com",
         "http://localhost:5173",
         "http://localhost:3000",
+        "https://shipsense-nine.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
