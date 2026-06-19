@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import MetricCard from '../../components/MetricCard';
 import Card from '../../components/Card';
 import Loading from '../../components/Loading';
 import StatusMessage from '../../components/StatusMessage';
-import { getMetrics, getInsights } from '../../api/client';
+import { getInsights } from '../../api/client';
 
 function EffortBadge({ level }) {
   const colors = {
@@ -24,7 +23,6 @@ export default function Overview() {
   const navigate = useNavigate();
   const productId = searchParams.get('productId');
 
-  const [metrics, setMetrics] = useState(null);
   const [insights, setInsights] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -38,12 +36,8 @@ export default function Overview() {
     let cancelled = false;
     async function fetchData() {
       try {
-        const [m, i] = await Promise.all([
-          getMetrics(productId),
-          getInsights(productId),
-        ]);
+        const i = await getInsights(productId);
         if (!cancelled) {
-          setMetrics(m);
           setInsights(i);
         }
       } catch (err) {
@@ -61,21 +55,13 @@ export default function Overview() {
   if (!productId) return null;
   if (loading) return <Loading text="Loading dashboard..." />;
   if (error) return <StatusMessage type="error">{error}</StatusMessage>;
-  if (!metrics) return null;
+  if (!insights) return null;
 
   return (
     <div className="flex flex-col gap-8">
       <div>
         <h1 className="text-xl font-semibold text-text">Overview</h1>
         <p className="text-sm text-text-secondary mt-1">Your product at a glance</p>
-      </div>
-
-      {/* Metrics row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <MetricCard label="Active Users" value={metrics.active_users.toLocaleString()} />
-        <MetricCard label="Avg Session" value={metrics.avg_session} />
-        <MetricCard label="Drop-off Rate" value={metrics.drop_off_rate} />
-        <MetricCard label="Top Action" value={metrics.top_action} />
       </div>
 
       {/* AI Summary */}
