@@ -80,7 +80,7 @@ Respond with valid JSON only, in this exact format:
                 {"role": "system", "content": SYSTEM_PROMPT if not audit_data else AUDIT_SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
             ],
-            temperature=0.7 if audit_data else 0.9,
+            temperature=0,
             response_format={"type": "json_object"},
         )
         result = json.loads(resp.choices[0].message.content)
