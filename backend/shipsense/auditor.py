@@ -177,14 +177,31 @@ async def run_full_audit(url: str) -> dict:
 
     result = {"url": url}
 
-    if "error" in pagespeed_result:
-        result["pagespeed_error"] = pagespeed_result["error"]
-    else:
+    if "error" not in pagespeed_result:
         result.update(pagespeed_result)
-
-    if "error" in scrape_result:
-        result["scrape_error"] = scrape_result["error"]
     else:
+        result.update({
+            "performance_score": None,
+            "accessibility_score": None,
+            "seo_score": None,
+            "core_web_vitals": None,
+            "pagespeed_opportunities": None,
+        })
+
+    if "error" not in scrape_result:
         result.update(scrape_result)
+    else:
+        result.update({
+            "form_field_count": None,
+            "has_guest_checkout": None,
+            "tracking_script_count": None,
+            "has_mobile_viewport": None,
+            "page_title": None,
+            "meta_description": None,
+            "ctas_above_fold": None,
+            "has_cookie_banner": None,
+            "has_popup": None,
+            "has_autoplay_video": None,
+        })
 
     return result
