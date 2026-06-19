@@ -19,7 +19,7 @@ from .models import (
 )
 from . import db
 from . import analyzer
-from . import seeder
+from . import estimator
 import agent
 
 load_dotenv()
@@ -79,10 +79,6 @@ def onboard(req: OnboardRequest):
             user_id=req.user_id,
         )
         product = db.get_product(product_id)
-
-        # Auto-seed realistic demo events so dashboard shows real data immediately
-        seeder.seed_demo_events(product_id, product)
-
         events = db.get_events(product_id)
         top_actions = analyzer.get_top_actions(events)
         drop_offs = analyzer.calculate_drop_off(events)
@@ -170,6 +166,24 @@ def get_behavior(product_id: int):
     active_users = analyzer.get_active_users(events)
     avg_session = analyzer.get_avg_session(events)
 
+    if active_users < 1000 and len(events) < 200:
+        est = estimator.estimate_behavior(product)
+        if est:
+            return BehaviorResponse(
+                top_actions=[
+                    ActionDetail(
+                        action=a["action"],
+                        users=a["users"],
+                        frequency=a["frequency"],
+                        dropoff_after=a["dropoff_after"],
+                    )
+                    for a in est["top_actions"]
+                ],
+                drop_off_points=est["drop_off_points"],
+                avg_session=est["avg_session"],
+                active_users=est["active_users"],
+            )
+
     return BehaviorResponse(
         top_actions=[
             ActionDetail(
@@ -200,11 +214,23 @@ def get_insights(product_id: int):
         raise HTTPException(status_code=404, detail=f"Product #{product_id} not found")
 
     events = db.get_events(product_id)
-    top_actions = analyzer.get_top_actions(events)
-    drop_offs = analyzer.calculate_drop_off(events)
     active_users = analyzer.get_active_users(events)
     avg_session = analyzer.get_avg_session(events)
+    top_actions = analyzer.get_top_actions(events)
+    drop_offs = analyzer.calculate_drop_off(events)
     patterns = analyzer.detect_patterns(events)
+
+    if active_users < 1000 and len(events) < 200:
+        est = estimator.estimate_behavior(product)
+        if est:
+            active_users = est["active_users"]
+            avg_session = est["avg_session"]
+            top_actions = [
+                {"action": a["action"], "count": a["users"], "frequency": a["frequency"]}
+                for a in est["top_actions"]
+            ]
+            drop_offs = est["drop_off_points"]
+            patterns = []
 
     insights = agent.generate_insights(
         product, top_actions, drop_offs,
@@ -240,6 +266,18 @@ def chat(req: ChatRequest):
     patterns = analyzer.detect_patterns(events)
     chat_history = db.get_chat_history(req.product_id, req.user_id)
 
+    if active_users < 1000 and len(events) < 200:
+        est = estimator.estimate_behavior(product)
+        if est:
+            active_users = est["active_users"]
+            avg_session = est["avg_session"]
+            top_actions = [
+                {"action": a["action"], "count": a["users"], "frequency": a["frequency"]}
+                for a in est["top_actions"]
+            ]
+            drop_offs = est["drop_off_points"]
+            patterns = []
+
     reply, data_point = agent.chat_with_agent(
         product, req.message,
         top_actions, drop_offs,
@@ -267,6 +305,16 @@ def get_metrics(product_id: int):
     avg_session = analyzer.get_avg_session(events)
     top_actions = analyzer.get_top_actions(events)
     drop_offs = analyzer.calculate_drop_off(events)
+
+    if active_users < 1000 and len(events) < 200:
+        est = estimator.estimate_metrics(product)
+        if est:
+            return MetricsResponse(
+                active_users=est["active_users"],
+                avg_session=est["avg_session"],
+                drop_off_rate=est["drop_off_rate"],
+                top_action=est["top_action"],
+            )
 
     return MetricsResponse(
         active_users=active_users,
