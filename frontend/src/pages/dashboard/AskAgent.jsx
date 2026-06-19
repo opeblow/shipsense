@@ -27,6 +27,7 @@ export default function AskAgent() {
     setQuery('');
     setError('');
     setLoading(true);
+    const startTime = Date.now();
 
     const promptMessageId = crypto.randomUUID();
     window.pendo?.trackAgent("prompt", {
@@ -40,16 +41,17 @@ export default function AskAgent() {
     // Simulate agent response
     await new Promise((r) => setTimeout(r, 1000));
 
-    const responseMessageId = crypto.randomUUID();
-    const answer = 'Based on your data, the biggest opportunity is reducing friction in the API key configuration step. Users who complete onboarding see 3x higher 7-day retention.';
+const responseMessageId = crypto.randomUUID();
+    const answer = 'Based on your data, the biggest opportunity is reducing friction in the API key configuration step. Users who ...';
+    const dataPoint = '42% of users complete onboarding · 63% drop at step 3';
 
     setMessages((prev) => [
       ...prev,
       {
         id: responseMessageId,
         question: q,
-        answer,
-        data: '42% of users complete onboarding · 63% drop at step 3',
+        answer: answer,
+        data: dataPoint,
       },
     ]);
 
@@ -61,6 +63,14 @@ export default function AskAgent() {
     });
 
     setLoading(false);
+    pendo.track('agent_question_asked', {
+      query: q.substring(0, 200),
+      query_length: q.length,
+      response_length: answer.length,
+      data_point: dataPoint,
+      message_count: messages.length + 1,
+      response_time_ms: Date.now() - startTime,
+    });
   };
 
   return (
