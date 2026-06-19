@@ -3,19 +3,24 @@ from .context import _build_context
 from .prompt import SYSTEM_PROMPT
 
 
-def chat_with_agent(product, message, top_actions, drop_offs, active_users, avg_session, patterns, chat_history):
+def chat_with_agent(product, message, top_actions, drop_offs, active_users, avg_session, patterns, chat_history, audit_data=None):
     context = _build_context(product, top_actions, drop_offs, active_users, avg_session, patterns, chat_history)
 
-    extra_instruction = (
-        "You are ShipSense. Follow these rules for this response:\n"
+    system_content = f"{SYSTEM_PROMPT}\n\nCurrent Product Data:\n{context}"
+    if audit_data:
+        import json
+        system_content += f"\n\nLive audit data from the actual webpage:\n{json.dumps(audit_data, indent=2)}"
+    system_content += (
+        "\n\nYou are ShipSense. Follow these rules for this response:\n"
         "1. Answer the specific question first — directly, in one sentence.\n"
-        "2. Add one relevant data point from the product data.\n"
+        "2. Add one relevant data point from the product data or audit data.\n"
         "3. End with one follow-up insight they didn't ask for but need.\n"
         "4. Use plain English. No jargon. No padding."
+        "5. When audit data is present, ground your answers in the measured fields. Never invent percentages or drop-off rates."
     )
 
     messages = [
-        {"role": "system", "content": f"{SYSTEM_PROMPT}\n\nCurrent Product Data:\n{context}\n\n{extra_instruction}"},
+        {"role": "system", "content": system_content},
     ]
     for msg in chat_history:
         messages.append({"role": msg["role"], "content": msg["content"]})

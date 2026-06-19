@@ -263,9 +263,13 @@ def get_insights(product_id: int):
             drop_offs = est["drop_off_points"]
             patterns = []
 
+    saved_audit = db.get_audit(product_id)
+    audit_data = saved_audit["audit_json"] if saved_audit else None
+
     insights = agent.generate_insights(
         product, top_actions, drop_offs,
         active_users, avg_session, patterns,
+        audit_data=audit_data,
     )
     db.save_insight(product_id, insights["summary"], insights["recommended_actions"])
 
@@ -309,11 +313,15 @@ def chat(req: ChatRequest):
             drop_offs = est["drop_off_points"]
             patterns = []
 
+    saved_audit = db.get_audit(req.product_id)
+    audit_data = saved_audit["audit_json"] if saved_audit else None
+
     reply, data_point = agent.chat_with_agent(
         product, req.message,
         top_actions, drop_offs,
         active_users, avg_session,
         patterns, chat_history,
+        audit_data=audit_data,
     )
 
     db.save_chat_message(req.product_id, req.user_id, "assistant", reply)
