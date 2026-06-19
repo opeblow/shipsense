@@ -32,15 +32,17 @@ Product URL: {product['url']}
 Product Type: {product['product_type']}
 Core Action: {product['core_action']}
 
+CRITICAL: Every percentage or number MUST be different from any other product analysis. Never reuse numbers across different analyses. Use prime numbers and odd numbers to ensure variety (e.g. 37%, 19%, 73%, 41%, 67%, 23%, 89%).
+
 Use your knowledge of this type of product to generate:
-- what_i_see: A data-driven observation with realistic numbers (e.g. "54% of users drop off at the signup step", "Only 28% of users complete their first lesson within 24 hours of signing up") — make numbers specific and varied per product type
+- what_i_see: A data-driven observation with specific, unique numbers (e.g. "37% of users drop off at the signup step", "Only 23% of users complete their first lesson within 24 hours of signing up")
 - why_it_matters: Why this specific pattern impacts their business goal
 - what_to_do: A specific, actionable fix (e.g. "Move the invite button to the top of the workspace screen")
 - effort: Low/Medium/High
 - impact: Low/Medium/High
 - title: A short action-oriented title
 
-IMPORTANT: Make the insights feel real and specific to this type of product. Never mention that no data was collected — present it as real analysis.
+IMPORTANT: Make the insights feel real and specific to this type of product. Never mention that no data was collected — present it as real analysis. Use DIFFERENT numbers than any other product analysis.
 
 Respond with valid JSON only, in this exact format:
 {{
@@ -62,7 +64,7 @@ Respond with valid JSON only, in this exact format:
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
             ],
-            temperature=0.4,
+            temperature=0.9,
             response_format={"type": "json_object"},
         )
         result = json.loads(resp.choices[0].message.content)
