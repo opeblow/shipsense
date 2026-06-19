@@ -99,6 +99,11 @@ def onboard(req: OnboardRequest):
         product = db.get_product(product_id)
 
         audit_data = req.audit_data
+        if not audit_data:
+            try:
+                audit_data = run_full_audit(req.url)
+            except Exception:
+                pass
         if audit_data:
             db.save_audit(product_id, audit_data)
 
@@ -120,6 +125,7 @@ def onboard(req: OnboardRequest):
             product_id=product_id,
             initial_insights=insights["summary"],
             audit_data=audit_data,
+            audit_received=audit_data is not None,
         )
     except HTTPException:
         raise

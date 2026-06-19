@@ -62,6 +62,7 @@ class OnboardResponse(BaseModel):
     product_id: int
     initial_insights: str
     audit_data: Optional[dict[str, Any]] = None
+    audit_received: Optional[bool] = None
 
 
 class AuditUrlResponse(BaseModel):
