@@ -81,7 +81,22 @@ async def audit_url(req: AuditUrlRequest):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Audit failed: {str(e)}")
+        detail = str(e)
+        if "no running event loop" in detail or "non-zero" in detail:
+            import traceback
+            detail = traceback.format_exc()
+        raise HTTPException(status_code=500, detail=f"Audit failed: {detail}")
+
+
+@app.get("/api/audit-test")
+def audit_test():
+    import httpx
+    from bs4 import BeautifulSoup
+    return {
+        "httpx_ok": True,
+        "bs4_ok": True,
+        "message": "Dependencies loaded successfully",
+    }
 
 
 # ---------------------------------------------------------------------------
