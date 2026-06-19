@@ -31,13 +31,25 @@ def estimate_metrics(product):
     if key in _CACHE:
         return _CACHE[key]
 
+    # Reuse behavior data for consistent active_users
+    behavior = estimate_behavior(product)
+    if behavior:
+        result = {
+            "active_users": behavior["active_users"],
+            "avg_session": behavior["avg_session"],
+            "drop_off_rate": behavior["drop_off_points"][0]["drop_off_rate"] if behavior.get("drop_off_points") else "0%",
+            "top_action": behavior["top_actions"][0]["action"] if behavior.get("top_actions") else "N/A",
+        }
+        _CACHE[key] = result
+        return result
+
     prompt = f"""You are a web researcher. Use your training knowledge of this specific product.
 
 Product URL: {product['url']}
 Product Type: {product['product_type']}
 Core Action: {product['core_action']}
 
-Generate realistic estimated metrics for this product based on its actual public user base.
+Generate realistic estimated metrics for this product based on its actual public user base. Every percentage must be a unique number (e.g. 23%, 67%, 44% — not repeated).
 
 Return ONLY valid JSON:
 {{
@@ -71,23 +83,23 @@ Product URL: {product['url']}
 Product Type: {product['product_type']}
 Core Action: {product['core_action']}
 
-Generate realistic estimated user behavior data for this product. Use the product's actual user base size.
+Generate realistic estimated user behavior data for this product. Use the product's actual user base size. Every percentage must be unique within this response (no repeated numbers). Use varied numbers like 23%, 67%, 44%, 18%, 31%, not rounded multiples of 5 or 10.
 
 Return ONLY valid JSON:
 {{
   "top_actions": [
-    {{"action": "Sign up", "users": <realistic number>, "frequency": "<XX%>", "dropoff_after": "<XX%>"}},
-    {{"action": "<next common action>", "users": <realistic number>, "frequency": "<XX%>", "dropoff_after": "<XX%>"}},
-    {{"action": "<next common action>", "users": <realistic number>, "frequency": "<XX%>", "dropoff_after": "<XX%>"}},
-    {{"action": "<next common action>", "users": <realistic number>, "frequency": "<XX%>", "dropoff_after": "<XX%>"}},
-    {{"action": "<next common action>", "users": <realistic number>, "frequency": "<XX%>", "dropoff_after": "<XX%>"}}
+    {{"action": "<the most common user action>", "users": <realistic number>, "frequency": "<XX%>", "dropoff_after": "<XX%>"}},
+    {{"action": "<2nd most common>", "users": <realistic number>, "frequency": "<XX%>", "dropoff_after": "<XX%>"}},
+    {{"action": "<3rd most common>", "users": <realistic number>, "frequency": "<XX%>", "dropoff_after": "<XX%>"}},
+    {{"action": "<4th most common>", "users": <realistic number>, "frequency": "<XX%>", "dropoff_after": "<XX%>"}},
+    {{"action": "<5th most common>", "users": <realistic number>, "frequency": "<XX%>", "dropoff_after": "<XX%>"}}
   ],
   "drop_off_points": [
-    {{"step": "Sign up", "next_step": "<next step>", "users_who_reached": <number>, "users_who_continued": <number>, "drop_off_rate": "<XX%>"}},
-    {{"step": "<step>", "next_step": "<next step>", "users_who_reached": <number>, "users_who_continued": <number>, "drop_off_rate": "<XX%>"}},
-    {{"step": "<step>", "next_step": "<next step>", "users_who_reached": <number>, "users_who_continued": <number>, "drop_off_rate": "<XX%>"}},
-    {{"step": "<step>", "next_step": "<next step>", "users_who_reached": <number>, "users_who_continued": <number>, "drop_off_rate": "<XX%>"}},
-    {{"step": "<step>", "next_step": "<next step>", "users_who_reached": <number>, "users_who_continued": <number>, "drop_off_rate": "<XX%>"}}
+    {{"step": "<first meaningful action>", "next_step": "<next action>", "users_who_reached": <number>, "users_who_continued": <number>, "drop_off_rate": "<XX%>"}},
+    {{"step": "<action>", "next_step": "<next action>", "users_who_reached": <number>, "users_who_continued": <number>, "drop_off_rate": "<XX%>"}},
+    {{"step": "<action>", "next_step": "<next action>", "users_who_reached": <number>, "users_who_continued": <number>, "drop_off_rate": "<XX%>"}},
+    {{"step": "<action>", "next_step": "<next action>", "users_who_reached": <number>, "users_who_continued": <number>, "drop_off_rate": "<XX%>"}},
+    {{"step": "<action>", "next_step": "<next action>", "users_who_reached": <number>, "users_who_continued": <number>, "drop_off_rate": "<XX%>"}}
   ],
   "avg_session": "<Xm Xs>",
   "active_users": <realistic number>
