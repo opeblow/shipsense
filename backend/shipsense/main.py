@@ -73,11 +73,13 @@ def health():
 # Audit URL
 # ---------------------------------------------------------------------------
 
-@app.post("/api/audit-url", response_model=AuditUrlResponse)
+@app.post("/api/audit-url")
 async def audit_url(req: AuditUrlRequest):
     try:
         result = await run_full_audit(req.url)
         return result
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Audit failed: {str(e)}")
 
