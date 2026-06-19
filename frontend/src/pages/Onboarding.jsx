@@ -3,7 +3,6 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import StatusMessage from '../components/StatusMessage';
-import Loading from '../components/Loading';
 import { onboardProduct, auditUrl } from '../api/client';
 
 const STEPS = [
@@ -73,15 +72,12 @@ export default function Onboarding() {
 
       setAuditProgress(3);
       setAnalysisResult(result);
-      try {
-        pendo.track('onboarding_completed', {
-          url: url.trim(),
-          audience: audience,
-          core_action: coreAction.trim(),
-          snippet_copied: snippetCopiedRef.current,
-        });
-      } catch {
-      }
+      window.pendo?.track('onboarding_completed', {
+        url: url.trim(),
+        audience: audience,
+        core_action: coreAction.trim(),
+        snippet_copied: snippetCopiedRef.current,
+      });
     } catch (err) {
       console.error('[Onboarding] Analysis failed:', err);
       const detail = err.response?.data?.detail;
@@ -120,17 +116,14 @@ export default function Onboarding() {
     if (Object.keys(e).length > 0) return;
 
     if (step < STEPS.length - 1) {
-      try {
-        pendo.track('onboarding_step_completed', {
-          step_number: step + 1,
-          step_title: STEPS[step].title,
-          url: url.trim(),
-          audience: audience || '',
-          core_action: coreAction.trim(),
-          total_steps: STEPS.length,
-        });
-      } catch {
-      }
+      window.pendo?.track('onboarding_step_completed', {
+        step_number: step + 1,
+        step_title: STEPS[step].title,
+        url: url.trim(),
+        audience: audience || '',
+        core_action: coreAction.trim(),
+        total_steps: STEPS.length,
+      });
       setStep((s) => s + 1);
     } else {
       handleFinish();
@@ -149,15 +142,13 @@ export default function Onboarding() {
       setCopied(true);
       snippetCopiedRef.current = true;
       setTimeout(() => setCopied(false), 2000);
-      try {
-        pendo.track('snippet_copied', {
-          snippet_type: 'novus_tracker',
-          copy_success: true,
-          onboarding_step: 4,
-        });
-      } catch {
-      }
+      window.pendo?.track('snippet_copied', {
+        snippet_type: 'novus_tracker',
+        copy_success: true,
+        onboarding_step: 4,
+      });
     } catch {
+      // ignore
     }
   };
 

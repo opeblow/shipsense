@@ -8,7 +8,7 @@ import { getInsights, getAudit } from '../../api/client';
 function ScoreBadge({ label, value, invert = false }) {
   if (value === null || value === undefined) return null;
   const score = Number(value);
-  let color = 'text-emerald-600 bg-emerald-50 border-emerald-200';
+  let color;
   if (invert) {
     // lower is better (e.g. CLS, render-blocking count)
     color = score < 0.1 ? 'text-emerald-600 bg-emerald-50 border-emerald-200'

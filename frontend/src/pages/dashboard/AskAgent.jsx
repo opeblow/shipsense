@@ -70,7 +70,7 @@ export default function AskAgent() {
         content: answer,
       });
 
-      pendo.track('agent_question_asked', {
+      window.pendo?.track('agent_question_asked', {
         query: q.substring(0, 200),
         query_length: q.length,
         response_length: answer.length,

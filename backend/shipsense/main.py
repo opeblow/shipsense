@@ -36,15 +36,14 @@ app = FastAPI(
     openapi_url="/openapi.json",
 )
 
+# The Novus tracker (served at /static/novus.js) POSTs events to
+# /api/behavior/ingest from arbitrary customer origins, so the API must accept
+# any origin. This API has no auth or cookies, so a wildcard origin is safe here
+# ("*" + credentials is spec-invalid anyway; allow_credentials must stay False).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://shipsense-knrs.onrender.com",
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "https://shipsense-nine.vercel.app",
-    ],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

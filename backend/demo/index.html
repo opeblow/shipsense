@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Novus Tracker Demo — generate real events</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 20px; color: #1a1a1a; }
+      h1 { font-size: 20px; }
+      p { color: #555; line-height: 1.5; }
+      code { background: #f2f2f2; padding: 1px 5px; }
+      .row { display: flex; gap: 8px; margin: 16px 0; }
+      input { flex: 1; padding: 8px 10px; border: 1px solid #ccc; font-size: 14px; }
+      button { padding: 8px 14px; border: 1px solid #5b6af0; background: #5b6af0; color: #fff; cursor: pointer; font-size: 14px; }
+      .actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 20px; }
+      .actions button, .actions a { background: #fff; color: #1a1a1a; border: 1px solid #ddd; padding: 16px; text-align: center; text-decoration: none; }
+      .status { margin-top: 16px; font-size: 13px; color: #2a7d2a; min-height: 18px; }
+      .hint { font-size: 13px; }
+    </style>
+  </head>
+  <body>
+    <h1>Novus Tracker Demo</h1>
+    <p>
+      This page simulates a <strong>real product</strong> that installed the Novus tracker.
+      Enter the <code>product_id</code> from onboarding, start tracking, then click the buttons —
+      each click is a <strong>real</strong> event POSTed to <code>/api/behavior/ingest</code>
+      and will appear in your dashboard.
+    </p>
+
+    <div class="row">
+      <input id="pid" type="number" placeholder="product_id (e.g. 1)" />
+      <button id="start">Start tracking</button>
+    </div>
+    <p class="hint">Tip: append <code>?pid=1</code> to this page's URL to auto-fill.</p>
+
+    <div class="actions">
+      <button data-novus="create project">Create project</button>
+      <button data-novus="configure api key">Configure API key</button>
+      <button data-novus="invite team member">Invite team member</button>
+      <button data-novus="view analytics">View analytics</button>
+      <button data-novus="export report">Export report</button>
+      <a href="#pricing" data-novus="open pricing">Open pricing</a>
+    </div>
+
+    <div class="status" id="status"></div>
+
+    <script>
+      var params = new URLSearchParams(location.search);
+      var pidInput = document.getElementById('pid');
+      var statusEl = document.getElementById('status');
+      if (params.get('pid')) { pidInput.value = params.get('pid'); }
+
+      var API_ORIGIN = location.origin && location.origin.startsWith('http')
+        ? location.origin
+        : 'http://localhost:8000';
+
+      document.getElementById('start').addEventListener('click', function () {
+        var pid = pidInput.value.trim();
+        if (!pid) { statusEl.style.color = '#c0392b'; statusEl.textContent = 'Enter a product_id first.'; return; }
+        if (document.querySelector('script[src*="novus.js"]')) {
+          statusEl.textContent = 'Tracker already running. Click the buttons to generate events.';
+          return;
+        }
+        var s = document.createElement('script');
+        s.src = API_ORIGIN + '/static/novus.js';
+        s.setAttribute('data-app-id', pid);
+        s.setAttribute('data-api-url', API_ORIGIN);
+        document.head.appendChild(s);
+        statusEl.style.color = '#2a7d2a';
+        statusEl.textContent = 'Tracking started for product ' + pid + '. Click around — events flush every 5s.';
+      });
+    </script>
+  </body>
+</html>

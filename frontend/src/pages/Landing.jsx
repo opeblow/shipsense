@@ -38,7 +38,7 @@ export default function Landing() {
     const startTime = Date.now();
     await new Promise((r) => setTimeout(r, 1200));
     setLoading(false);
-    pendo.track('url_analysis_submitted', {
+    window.pendo?.track('url_analysis_submitted', {
       url: url.trim(),
       is_valid_url: true,
       analysis_duration_ms: Date.now() - startTime,
