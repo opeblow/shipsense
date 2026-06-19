@@ -16,6 +16,7 @@ const STEPS = [
 
 const AUDIENCES = ['Consumers', 'B2B', 'Internal tool'];
 
+const API_URL = import.meta.env.VITE_API_URL || 'https://shipsense-knrs.onrender.com';
 const NOVUS_SNIPPET = `<!-- ShipSense Novus Tracker -->
 <script>
   (function(w,d,s){
@@ -24,7 +25,8 @@ const NOVUS_SNIPPET = `<!-- ShipSense Novus Tracker -->
     var f=d.getElementsByTagName(s)[0],
         j=d.createElement(s);
     j.async=true;
-    j.src='https://cdn.shipsense.ai/novus.js';
+    j.src='${API_URL}/static/novus.js';
+    j.setAttribute('data-api-url','${API_URL}');
     f.parentNode.insertBefore(j,f);
   })(window,document,'script');
 </script>`;
@@ -62,7 +64,12 @@ export default function Onboarding() {
         setup_duration_ms: Date.now() - startTime,
       });
     } catch (err) {
-      setErrors({ submit: err.response?.data?.detail || 'Analysis failed. Please try again.' });
+      console.error('[Onboarding] API call failed:', err);
+      const detail = err.response?.data?.detail;
+      const status = err.response?.status;
+      const statusText = err.response?.statusText;
+      const message = detail || (status ? `Server error (${status}${statusText ? ': ' + statusText : ''})` : err.message) || 'Analysis failed. Please try again.';
+      setErrors({ submit: message });
     } finally {
       setAnalyzing(false);
     }

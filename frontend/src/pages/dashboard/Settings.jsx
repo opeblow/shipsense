@@ -2,7 +2,8 @@ import { useState } from 'react';
 import Card from '../../components/Card';
 import Button from '../../components/Button';
 
-const SETTINGS_SNIPPET = '<script src="https://cdn.shipsense.ai/novus.js" data-app-id="YOUR_APP_ID"></script>';
+const API_URL = import.meta.env.VITE_API_URL || 'https://shipsense-knrs.onrender.com';
+const SETTINGS_SNIPPET = `<script src="${API_URL}/static/novus.js" data-app-id="YOUR_APP_ID" data-api-url="${API_URL}"></script>`;
 
 export default function Settings() {
   const [copied, setCopied] = useState(false);
