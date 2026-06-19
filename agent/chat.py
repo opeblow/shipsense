@@ -6,18 +6,33 @@ from .prompt import SYSTEM_PROMPT
 def chat_with_agent(product, message, top_actions, drop_offs, active_users, avg_session, patterns, chat_history, audit_data=None):
     context = _build_context(product, top_actions, drop_offs, active_users, avg_session, patterns, chat_history)
 
-    system_content = f"{SYSTEM_PROMPT}\n\nCurrent Product Data:\n{context}"
-    if audit_data:
-        import json
-        system_content += f"\n\nLive audit data from the actual webpage:\n{json.dumps(audit_data, indent=2)}"
-    system_content += (
-        "\n\nYou are ShipSense. Follow these rules for this response:\n"
-        "1. Answer the specific question first — directly, in one sentence.\n"
-        "2. Add one relevant data point from the product data or audit data.\n"
-        "3. End with one follow-up insight they didn't ask for but need.\n"
-        "4. Use plain English. No jargon. No padding."
-        "5. When audit data is present, ground your answers in the measured fields. Never invent percentages or drop-off rates."
+    has_real_events = active_users > 0 or len(top_actions) > 0
+    has_audit = bool(audit_data) and (
+        audit_data.get("performance_score") is not None or
+        audit_data.get("form_field_count") is not None or
+        audit_data.get("security_headers") is not None
     )
+
+    system_content = f"{SYSTEM_PROMPT}\n\nCurrent Product Data:\n{context}"
+
+    if has_audit:
+        import json
+        system_content += f"\n\nLive audit data — REAL measured fields from the actual webpage:\n{json.dumps(audit_data, indent=2)}"
+
+    system_content += (
+        "\n\n── DATA HONESTY RULES (non-negotiable) ──\n"
+        "1. You ONLY have two sources of truth: (a) the live audit fields above, and (b) real Novus tracker events.\n"
+        f"2. Real user events available: {'YES — use top_actions, drop_offs, active_users, avg_session above' if has_real_events else 'NO — no events have been collected yet'}.\n"
+        f"3. Live audit data available: {'YES — use the measured fields in the audit JSON above' if has_audit else 'NO — audit has not run yet'}.\n"
+        "4. NEVER invent drop-off percentages, user counts, session durations, or conversion rates.\n"
+        "5. If asked for a metric you don't have (e.g. 'What is my conversion rate?'), say exactly: "
+        "'I don't have that data yet — install the Novus tracker to collect real user events.'\n"
+        "6. When audit data IS available, ground every claim in a specific measured field "
+        "(e.g. 'Your performance score is 43/100' or '12 images are missing alt text').\n"
+        "7. Answer the question directly first. Add one data point. End with one forward-looking insight.\n"
+        "8. Plain English. No jargon. No padding. No invented numbers."
+    )
+
 
     messages = [
         {"role": "system", "content": system_content},

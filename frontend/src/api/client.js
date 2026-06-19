@@ -46,4 +46,9 @@ export async function getProduct(productId) {
   return res.data;
 }
 
+export async function getAudit(productId) {
+  const res = await client.get(`/api/audit/${productId}`);
+  return res.data;
+}
+
 export default client;

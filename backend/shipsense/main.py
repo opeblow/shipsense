@@ -197,24 +197,7 @@ def get_behavior(product_id: int):
     active_users = analyzer.get_active_users(events)
     avg_session = analyzer.get_avg_session(events)
 
-    if active_users < 1000 and len(events) < 200:
-        est = estimator.estimate_behavior(product)
-        if est:
-            return BehaviorResponse(
-                top_actions=[
-                    ActionDetail(
-                        action=a["action"],
-                        users=a["users"],
-                        frequency=a["frequency"],
-                        dropoff_after=a["dropoff_after"],
-                    )
-                    for a in est["top_actions"]
-                ],
-                drop_off_points=est["drop_off_points"],
-                avg_session=est["avg_session"],
-                active_users=est["active_users"],
-            )
-
+    # Real events only — no estimated/hallucinated fallback.
     return BehaviorResponse(
         top_actions=[
             ActionDetail(
@@ -260,18 +243,7 @@ def get_insights(product_id: int):
     drop_offs = analyzer.calculate_drop_off(events)
     patterns = analyzer.detect_patterns(events)
 
-    if active_users < 1000 and len(events) < 200:
-        est = estimator.estimate_behavior(product)
-        if est:
-            active_users = est["active_users"]
-            avg_session = est["avg_session"]
-            top_actions = [
-                {"action": a["action"], "count": a["users"], "frequency": a["frequency"]}
-                for a in est["top_actions"]
-            ]
-            drop_offs = est["drop_off_points"]
-            patterns = []
-
+    # Real audit data only — no simulated fallback.
     saved_audit = db.get_audit(product_id)
     audit_data = saved_audit["audit_json"] if saved_audit else None
 
@@ -310,18 +282,7 @@ def chat(req: ChatRequest):
     patterns = analyzer.detect_patterns(events)
     chat_history = db.get_chat_history(req.product_id, req.user_id)
 
-    if active_users < 1000 and len(events) < 200:
-        est = estimator.estimate_behavior(product)
-        if est:
-            active_users = est["active_users"]
-            avg_session = est["avg_session"]
-            top_actions = [
-                {"action": a["action"], "count": a["users"], "frequency": a["frequency"]}
-                for a in est["top_actions"]
-            ]
-            drop_offs = est["drop_off_points"]
-            patterns = []
-
+    # Real audit data only — chat agent grounds answers in measured fields.
     saved_audit = db.get_audit(req.product_id)
     audit_data = saved_audit["audit_json"] if saved_audit else None
 
@@ -354,22 +315,30 @@ def get_metrics(product_id: int):
     top_actions = analyzer.get_top_actions(events)
     drop_offs = analyzer.calculate_drop_off(events)
 
-    if active_users < 1000 and len(events) < 200:
-        est = estimator.estimate_metrics(product)
-        if est:
-            return MetricsResponse(
-                active_users=est["active_users"],
-                avg_session=est["avg_session"],
-                drop_off_rate=est["drop_off_rate"],
-                top_action=est["top_action"],
-            )
-
+    # Real tracked events only — no simulated metrics.
     return MetricsResponse(
         active_users=active_users,
         avg_session=avg_session,
         drop_off_rate=drop_offs[0]["drop_off_rate"] if drop_offs else "0%",
         top_action=top_actions[0]["action"] if top_actions else "N/A",
     )
+
+
+# ---------------------------------------------------------------------------
+# Audit data (real scraped fields)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/audit/{product_id}")
+def get_audit(product_id: int):
+    product = db.get_product(product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail=f"Product #{product_id} not found")
+
+    saved_audit = db.get_audit(product_id)
+    if not saved_audit:
+        raise HTTPException(status_code=404, detail="No audit data found. Re-run the audit from the onboarding page.")
+
+    return {"product_id": product_id, "url": product["url"], "audit": saved_audit["audit_json"]}
 
 
 # ---------------------------------------------------------------------------
