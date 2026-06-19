@@ -19,6 +19,7 @@ from .models import (
 )
 from . import db
 from . import analyzer
+from . import seeder
 import agent
 
 load_dotenv()
@@ -78,6 +79,10 @@ def onboard(req: OnboardRequest):
             user_id=req.user_id,
         )
         product = db.get_product(product_id)
+
+        # Auto-seed realistic demo events so dashboard shows real data immediately
+        seeder.seed_demo_events(product_id, product)
+
         events = db.get_events(product_id)
         top_actions = analyzer.get_top_actions(events)
         drop_offs = analyzer.calculate_drop_off(events)

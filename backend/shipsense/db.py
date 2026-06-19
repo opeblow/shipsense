@@ -98,6 +98,13 @@ def insert_events(product_id, events):
     return count
 
 
+def delete_events(product_id):
+    conn = get_connection()
+    conn.execute("DELETE FROM events WHERE product_id = ?", (product_id,))
+    conn.commit()
+    conn.close()
+
+
 def get_events(product_id, since=None):
     conn = get_connection()
     if since:
