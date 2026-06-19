@@ -53,6 +53,14 @@ def init_db():
             FOREIGN KEY (product_id) REFERENCES products(id)
         );
 
+        CREATE TABLE IF NOT EXISTS audits (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            product_id INTEGER NOT NULL,
+            audit_json TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (product_id) REFERENCES products(id)
+        );
+
         CREATE INDEX IF NOT EXISTS idx_events_product ON events(product_id);
         CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
         CREATE INDEX IF NOT EXISTS idx_chat_product ON chat_history(product_id);
@@ -118,6 +126,34 @@ def get_events(product_id, since=None):
         ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+# --- Audits CRUD ---
+
+def save_audit(product_id, audit_data):
+    import json
+    conn = get_connection()
+    conn.execute(
+        "INSERT INTO audits (product_id, audit_json) VALUES (?, ?)",
+        (product_id, json.dumps(audit_data)),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_audit(product_id):
+    import json
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT * FROM audits WHERE product_id = ? ORDER BY created_at DESC LIMIT 1",
+        (product_id,),
+    ).fetchone()
+    conn.close()
+    if row:
+        data = dict(row)
+        data["audit_json"] = json.loads(data["audit_json"])
+        return data
+    return None
 
 
 # --- Insights CRUD ---

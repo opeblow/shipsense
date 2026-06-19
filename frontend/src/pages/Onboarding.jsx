@@ -4,7 +4,7 @@ import Button from '../components/Button';
 import Input from '../components/Input';
 import StatusMessage from '../components/StatusMessage';
 import Loading from '../components/Loading';
-import { onboardProduct } from '../api/client';
+import { onboardProduct, auditUrl } from '../api/client';
 
 const STEPS = [
   { title: 'What\'s your product URL?' },
@@ -31,6 +31,12 @@ const NOVUS_SNIPPET = `<!-- ShipSense Novus Tracker -->
   })(window,document,'script');
 </script>`;
 
+const AUDIT_STEPS = [
+  { label: 'Running PageSpeed audit...', key: 'pagespeed' },
+  { label: 'Scanning page structure...', key: 'structure' },
+  { label: 'Generating insights...', key: 'insights' },
+];
+
 export default function Onboarding() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -44,32 +50,48 @@ export default function Onboarding() {
   const analysisTriggeredRef = useRef(false);
   const [analysisResult, setAnalysisResult] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [auditProgress, setAuditProgress] = useState(null);
+  const [auditError, setAuditError] = useState(null);
 
   const runAnalysis = async () => {
     setAnalyzing(true);
+    setAuditProgress(0);
+    setAuditError(null);
+
     try {
+      setAuditProgress(1);
+      const auditData = await auditUrl(url);
+
+      setAuditProgress(2);
       const result = await onboardProduct({
         url,
         product_type: audience.toLowerCase(),
         core_action: coreAction,
         user_id: 'default',
+        audit_data: auditData,
       });
+
+      setAuditProgress(3);
       setAnalysisResult(result);
-      const startTime = Date.now();
-      pendo.track('onboarding_completed', {
-        url: url.trim(),
-        audience: audience,
-        core_action: coreAction.trim(),
-        snippet_copied: snippetCopiedRef.current,
-        setup_duration_ms: Date.now() - startTime,
-      });
+      try {
+        pendo.track('onboarding_completed', {
+          url: url.trim(),
+          audience: audience,
+          core_action: coreAction.trim(),
+          snippet_copied: snippetCopiedRef.current,
+        });
+      } catch {
+      }
     } catch (err) {
-      console.error('[Onboarding] API call failed:', err);
+      console.error('[Onboarding] Analysis failed:', err);
       const detail = err.response?.data?.detail;
       const status = err.response?.status;
-      const statusText = err.response?.statusText;
-      const message = detail || (status ? `Server error (${status}${statusText ? ': ' + statusText : ''})` : err.message) || 'Analysis failed. Please try again.';
-      setErrors({ submit: message });
+      const msg = detail || (status ? `Server error (${status})` : err.message) || 'Analysis failed. Please try again.';
+      const isAuditFailure = msg.toLowerCase().includes('audit') || msg.toLowerCase().includes('scrape') || msg.toLowerCase().includes('timeout');
+      setAuditError(isAuditFailure
+        ? "We couldn't fully audit this URL — try a different one"
+        : msg);
+      setErrors({ submit: msg });
     } finally {
       setAnalyzing(false);
     }
@@ -98,14 +120,17 @@ export default function Onboarding() {
     if (Object.keys(e).length > 0) return;
 
     if (step < STEPS.length - 1) {
-      pendo.track('onboarding_step_completed', {
-        step_number: step + 1,
-        step_title: STEPS[step].title,
-        url: url.trim(),
-        audience: audience || '',
-        core_action: coreAction.trim(),
-        total_steps: STEPS.length,
-      });
+      try {
+        pendo.track('onboarding_step_completed', {
+          step_number: step + 1,
+          step_title: STEPS[step].title,
+          url: url.trim(),
+          audience: audience || '',
+          core_action: coreAction.trim(),
+          total_steps: STEPS.length,
+        });
+      } catch {
+      }
       setStep((s) => s + 1);
     } else {
       handleFinish();
@@ -124,13 +149,15 @@ export default function Onboarding() {
       setCopied(true);
       snippetCopiedRef.current = true;
       setTimeout(() => setCopied(false), 2000);
-      pendo.track('snippet_copied', {
-        snippet_type: 'novus_tracker',
-        copy_success: true,
-        onboarding_step: 4,
-      });
+      try {
+        pendo.track('snippet_copied', {
+          snippet_type: 'novus_tracker',
+          copy_success: true,
+          onboarding_step: 4,
+        });
+      } catch {
+      }
     } catch {
-      // ignore
     }
   };
 
@@ -220,9 +247,31 @@ export default function Onboarding() {
 
             {step === 4 && (
               <div className="mt-6">
-                {analyzing && <Loading text="Analyzing your product..." />}
+                {analyzing && (
+                  <div className="space-y-4 py-4">
+                    {AUDIT_STEPS.map((s, i) => {
+                      const done = auditProgress !== null && i < auditProgress;
+                      const active = auditProgress !== null && i === auditProgress;
+                      return (
+                        <div key={s.key} className="flex items-center gap-3">
+                          <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-medium shrink-0
+                            ${done ? 'bg-success text-white' : active ? 'border-2 border-accent border-t-transparent rounded-full animate-spin' : 'border border-border'}`}>
+                            {done ? '\u2713' : ''}
+                          </div>
+                          <span className={`text-sm ${done ? 'text-text' : active ? 'text-text' : 'text-text-tertiary'}`}>
+                            {s.label}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
 
-                {errors.submit && !analyzing && (
+                {auditError && !analyzing && (
+                  <StatusMessage type="error">{auditError}</StatusMessage>
+                )}
+
+                {errors.submit && !analyzing && !auditError && (
                   <StatusMessage type="error">{errors.submit}</StatusMessage>
                 )}
 
@@ -231,7 +280,7 @@ export default function Onboarding() {
                     <div className="bg-success/5 border border-success/20 p-4 mb-6">
                       <p className="text-sm text-success font-medium">ShipSense has analyzed your product.</p>
                       <p className="text-sm text-text-secondary mt-1">
-                        {url ? url.replace(/^https?:\/\//, '').split('/')[0] : 'Your product'} is set up. Data is flowing in.
+                        {url ? url.replace(/^https?:\/\//, '').split('/')[0] : 'Your product'} is set up.
                       </p>
                     </div>
                     <div className="text-sm text-text-secondary leading-relaxed whitespace-pre-line">

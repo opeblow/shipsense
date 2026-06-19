@@ -3,12 +3,28 @@ import json
 from .client import _get_client
 from .context import _build_context
 from .prompt import SYSTEM_PROMPT
+from .prompt_audit import AUDIT_SYSTEM_PROMPT
 
 
-def generate_insights(product, top_actions, drop_offs, active_users, avg_session, patterns):
+def generate_insights(product, top_actions, drop_offs, active_users, avg_session, patterns, audit_data=None):
     has_data = active_users > 0 and len(top_actions) > 0
 
-    if has_data:
+    if audit_data:
+        prompt = f"""{AUDIT_SYSTEM_PROMPT}
+
+Input data:
+{json.dumps(audit_data, indent=2)}
+
+Respond with valid JSON only, in this exact format:
+{{
+  "what_i_see": "...",
+  "why_it_matters": "...",
+  "what_to_do": "...",
+  "effort": "Low/Medium/High",
+  "impact": "Low/Medium/High",
+  "title": "short action title"
+}}"""
+    elif has_data:
         context = _build_context(product, top_actions, drop_offs, active_users, avg_session, patterns, [])
         prompt = f"""You are ShipSense. Analyze this product data and give ONE sharp insight with ONE recommendation.
 
@@ -61,10 +77,10 @@ Respond with valid JSON only, in this exact format:
         resp = llm.chat.completions.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": SYSTEM_PROMPT if not audit_data else AUDIT_SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
             ],
-            temperature=0.9,
+            temperature=0.7 if audit_data else 0.9,
             response_format={"type": "json_object"},
         )
         result = json.loads(resp.choices[0].message.content)

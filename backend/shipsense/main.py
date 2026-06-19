@@ -1,5 +1,7 @@
 import os
 import sys
+import json
+import asyncio
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from .models import (
     OnboardRequest, OnboardResponse,
+    AuditUrlRequest, AuditUrlResponse,
     BehaviorIngestRequest, BehaviorIngestResponse,
     BehaviorResponse, ActionDetail,
     ChatRequest, ChatResponse,
@@ -20,6 +23,7 @@ from .models import (
 from . import db
 from . import analyzer
 from . import estimator
+from .auditor import run_full_audit
 import agent
 
 load_dotenv()
@@ -66,6 +70,19 @@ def health():
 
 
 # ---------------------------------------------------------------------------
+# Audit URL
+# ---------------------------------------------------------------------------
+
+@app.post("/api/audit-url", response_model=AuditUrlResponse)
+async def audit_url(req: AuditUrlRequest):
+    try:
+        result = await run_full_audit(req.url)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Audit failed: {str(e)}")
+
+
+# ---------------------------------------------------------------------------
 # Onboard
 # ---------------------------------------------------------------------------
 
@@ -79,6 +96,11 @@ def onboard(req: OnboardRequest):
             user_id=req.user_id,
         )
         product = db.get_product(product_id)
+
+        audit_data = req.audit_data
+        if audit_data:
+            db.save_audit(product_id, audit_data)
+
         events = db.get_events(product_id)
         top_actions = analyzer.get_top_actions(events)
         drop_offs = analyzer.calculate_drop_off(events)
@@ -89,12 +111,14 @@ def onboard(req: OnboardRequest):
         insights = agent.generate_insights(
             product, top_actions, drop_offs,
             active_users, avg_session, patterns,
+            audit_data=audit_data,
         )
         db.save_insight(product_id, insights["summary"], insights["recommended_actions"])
 
         return OnboardResponse(
             product_id=product_id,
             initial_insights=insights["summary"],
+            audit_data=audit_data,
         )
     except HTTPException:
         raise

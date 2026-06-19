@@ -7,6 +7,11 @@ const client = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+export async function auditUrl(url) {
+  const res = await client.post('/api/audit-url', { url });
+  return res.data;
+}
+
 export async function onboardProduct(data) {
   const res = await client.post('/api/onboard', data);
   return res.data;
