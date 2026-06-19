@@ -1,8 +1,9 @@
-import { useState, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import StatusMessage from '../components/StatusMessage';
+import Loading from '../components/Loading';
 import { onboardProduct } from '../api/client';
 
 const STEPS = [
@@ -36,9 +37,43 @@ export default function Onboarding() {
   const [audience, setAudience] = useState('');
   const [coreAction, setCoreAction] = useState('');
   const [copied, setCopied] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
   const snippetCopiedRef = useRef(false);
+  const analysisTriggeredRef = useRef(false);
+  const [analysisResult, setAnalysisResult] = useState(null);
+  const [analyzing, setAnalyzing] = useState(false);
+
+  const runAnalysis = async () => {
+    setAnalyzing(true);
+    try {
+      const result = await onboardProduct({
+        url,
+        product_type: audience.toLowerCase(),
+        core_action: coreAction,
+        user_id: 'default',
+      });
+      setAnalysisResult(result);
+      const startTime = Date.now();
+      pendo.track('onboarding_completed', {
+        url: url.trim(),
+        audience: audience,
+        core_action: coreAction.trim(),
+        snippet_copied: snippetCopiedRef.current,
+        setup_duration_ms: Date.now() - startTime,
+      });
+    } catch (err) {
+      setErrors({ submit: err.response?.data?.detail || 'Analysis failed. Please try again.' });
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  useEffect(() => {
+    if (step === 4 && !analysisTriggeredRef.current) {
+      analysisTriggeredRef.current = true;
+      runAnalysis();
+    }
+  }, [step]);
 
   const canProceed = () => {
     if (step === 0) return url.trim().length > 0;
@@ -70,28 +105,9 @@ export default function Onboarding() {
     }
   };
 
-  const handleFinish = async () => {
-    setLoading(true);
-    const startTime = Date.now();
-    try {
-      const result = await onboardProduct({
-        url,
-        product_type: audience.toLowerCase(),
-        core_action: coreAction,
-        user_id: 'default',
-      });
-      setLoading(false);
-      pendo.track('onboarding_completed', {
-        url: url.trim(),
-        audience: audience,
-        core_action: coreAction.trim(),
-        snippet_copied: snippetCopiedRef.current,
-        setup_duration_ms: Date.now() - startTime,
-      });
-      navigate(`/dashboard?productId=${result.product_id}`);
-    } catch (err) {
-      setLoading(false);
-      setErrors({ submit: err.response?.data?.detail || 'Failed to onboard product. Please try again.' });
+  const handleFinish = () => {
+    if (analysisResult) {
+      navigate(`/dashboard?productId=${analysisResult.product_id}`);
     }
   };
 
@@ -197,17 +213,25 @@ export default function Onboarding() {
 
             {step === 4 && (
               <div className="mt-6">
-                <div className="bg-success/5 border border-success/20 p-4 mb-6">
-                  <p className="text-sm text-success font-medium">Novus is tracking your product.</p>
-                  <p className="text-sm text-text-secondary mt-1">
-                    We've already detected {url ? `${url.replace(/^https?:\/\//, '').split('/')[0]}` : 'your product'} is active. Data is flowing in.
-                  </p>
-                </div>
-                <div className="flex flex-col gap-2 text-sm text-text-secondary">
-                  <p>We found <strong className="text-text">142 users</strong> in the last 7 days.</p>
-                  <p>Top action: <strong className="text-text">Create Project</strong> (42% of users).</p>
-                  <p>Biggest drop-off: <strong className="text-text">API Key configuration</strong> (63% drop).</p>
-                </div>
+                {analyzing && <Loading text="Analyzing your product..." />}
+
+                {errors.submit && !analyzing && (
+                  <StatusMessage type="error">{errors.submit}</StatusMessage>
+                )}
+
+                {analysisResult && !analyzing && (
+                  <>
+                    <div className="bg-success/5 border border-success/20 p-4 mb-6">
+                      <p className="text-sm text-success font-medium">ShipSense has analyzed your product.</p>
+                      <p className="text-sm text-text-secondary mt-1">
+                        {url ? url.replace(/^https?:\/\//, '').split('/')[0] : 'Your product'} is set up. Data is flowing in.
+                      </p>
+                    </div>
+                    <div className="text-sm text-text-secondary leading-relaxed whitespace-pre-line">
+                      {analysisResult.initial_insights}
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -219,8 +243,8 @@ export default function Onboarding() {
             ) : (
               <div />
             )}
-            <Button onClick={handleNext} disabled={!canProceed() || loading}>
-              {step === STEPS.length - 1 ? (loading ? 'Setting up...' : 'Go to Dashboard') : 'Continue'}
+            <Button onClick={handleNext} disabled={!canProceed() || analyzing || (step === STEPS.length - 1 && !analysisResult)}>
+              {step === STEPS.length - 1 ? (analyzing ? 'Analyzing...' : 'Go to Dashboard') : 'Continue'}
             </Button>
           </div>
           {errors.submit && (
