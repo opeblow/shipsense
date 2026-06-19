@@ -36,7 +36,6 @@ export default function Landing() {
     setError('');
     setLoading(true);
     const startTime = Date.now();
-    // Simulate analysis, then route to onboarding
     await new Promise((r) => setTimeout(r, 1200));
     setLoading(false);
     pendo.track('url_analysis_submitted', {
@@ -44,7 +43,7 @@ export default function Landing() {
       is_valid_url: true,
       analysis_duration_ms: Date.now() - startTime,
     });
-    navigate('/onboard');
+    navigate('/onboard', { state: { url: url.trim() } });
   };
 
   return (

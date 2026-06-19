@@ -1,12 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import Card from '../../components/Card';
 import Loading from '../../components/Loading';
 import StatusMessage from '../../components/StatusMessage';
-import { CHAT_HISTORY } from '../../data/mock';
+import { askAgent } from '../../api/client';
 
 export default function AskAgent() {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const productId = searchParams.get('productId');
+
   const [query, setQuery] = useState('');
-  const [messages, setMessages] = useState(CHAT_HISTORY);
+  const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const inputRef = useRef(null);
@@ -14,8 +19,12 @@ export default function AskAgent() {
   const [conversationId] = useState(() => crypto.randomUUID());
 
   useEffect(() => {
+    if (!productId) {
+      navigate('/onboard', { replace: true });
+      return;
+    }
     inputRef.current?.focus();
-  }, []);
+  }, [productId, navigate]);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
@@ -38,40 +47,45 @@ export default function AskAgent() {
       suggestedPrompt: false,
     });
 
-    // Simulate agent response
-    await new Promise((r) => setTimeout(r, 1000));
+    try {
+      const result = await askAgent(productId, 'default', q);
+      const responseMessageId = crypto.randomUUID();
+      const answer = result.reply;
+      const dataPoint = result.data_point;
 
-const responseMessageId = crypto.randomUUID();
-    const answer = 'Based on your data, the biggest opportunity is reducing friction in the API key configuration step. Users who ...';
-    const dataPoint = '42% of users complete onboarding · 63% drop at step 3';
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: responseMessageId,
+          question: q,
+          answer,
+          data: dataPoint,
+        },
+      ]);
 
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: responseMessageId,
-        question: q,
-        answer: answer,
-        data: dataPoint,
-      },
-    ]);
+      window.pendo?.trackAgent("agent_response", {
+        agentId: "l8vIAIZmKxBHnErFU7JiizOHrMo",
+        conversationId,
+        messageId: responseMessageId,
+        content: answer,
+      });
 
-    window.pendo?.trackAgent("agent_response", {
-      agentId: "l8vIAIZmKxBHnErFU7JiizOHrMo",
-      conversationId,
-      messageId: responseMessageId,
-      content: answer,
-    });
-
-    setLoading(false);
-    pendo.track('agent_question_asked', {
-      query: q.substring(0, 200),
-      query_length: q.length,
-      response_length: answer.length,
-      data_point: dataPoint,
-      message_count: messages.length + 1,
-      response_time_ms: Date.now() - startTime,
-    });
+      pendo.track('agent_question_asked', {
+        query: q.substring(0, 200),
+        query_length: q.length,
+        response_length: answer.length,
+        data_point: dataPoint,
+        message_count: messages.length + 1,
+        response_time_ms: Date.now() - startTime,
+      });
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to get a response from the agent');
+    } finally {
+      setLoading(false);
+    }
   };
+
+  if (!productId) return null;
 
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)]">
@@ -94,9 +108,11 @@ const responseMessageId = crypto.randomUUID();
               <p className="text-sm text-text-secondary mb-2 font-medium">{msg.question}</p>
               <Card className="!p-4">
                 <p className="text-sm text-text leading-relaxed mb-2">{msg.answer}</p>
-                <div className="text-xs text-accent bg-accent/5 px-2 py-1 inline-block">
-                  {msg.data}
-                </div>
+                {msg.data && (
+                  <div className="text-xs text-accent bg-accent/5 px-2 py-1 inline-block">
+                    {msg.data}
+                  </div>
+                )}
               </Card>
             </div>
           ))}

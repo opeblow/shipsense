@@ -1,4 +1,4 @@
-export default function MetricCard({ label, value, change, trend }) {
+export default function MetricCard({ label, value, change }) {
   const isPositive = change?.startsWith('+');
   const isNegative = change?.startsWith('-');
 

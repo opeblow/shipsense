@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useSearchParams } from 'react-router-dom';
 
 const ITEMS = [
   { to: '/dashboard', label: 'Overview', icon: '01' },
@@ -8,7 +8,7 @@ const ITEMS = [
   { to: '/dashboard/settings', label: 'Settings', icon: '05' },
 ];
 
-function SidebarIcon({ n }) {
+function SidebarIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <rect x="1" y="1" width="14" height="14" rx="2" />
@@ -20,6 +20,14 @@ function SidebarIcon({ n }) {
 }
 
 export default function Sidebar() {
+  const [searchParams] = useSearchParams();
+
+  function linkTo(base) {
+    const productId = searchParams.get('productId');
+    if (!productId) return base;
+    return `${base}?productId=${productId}`;
+  }
+
   return (
     <aside className="w-56 min-h-screen bg-sidebar flex flex-col border-r border-[#1a1a1a]">
       <div className="px-5 py-6 border-b border-[#1a1a1a]">
@@ -32,7 +40,7 @@ export default function Sidebar() {
         {ITEMS.map((item) => (
           <NavLink
             key={item.to}
-            to={item.to}
+            to={linkTo(item.to)}
             end={item.to === '/dashboard'}
             className={({ isActive }) =>
               `flex items-center gap-3 px-5 py-2.5 text-sm transition-colors duration-75

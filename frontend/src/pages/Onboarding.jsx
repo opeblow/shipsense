@@ -1,8 +1,9 @@
 import { useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import StatusMessage from '../components/StatusMessage';
+import { onboardProduct } from '../api/client';
 
 const STEPS = [
   { title: 'What\'s your product URL?' },
@@ -29,8 +30,9 @@ const NOVUS_SNIPPET = `<!-- ShipSense Novus Tracker -->
 
 export default function Onboarding() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [step, setStep] = useState(0);
-  const [url, setUrl] = useState('');
+  const [url, setUrl] = useState(location.state?.url || '');
   const [audience, setAudience] = useState('');
   const [coreAction, setCoreAction] = useState('');
   const [copied, setCopied] = useState(false);
@@ -71,16 +73,26 @@ export default function Onboarding() {
   const handleFinish = async () => {
     setLoading(true);
     const startTime = Date.now();
-    await new Promise((r) => setTimeout(r, 2000));
-    setLoading(false);
-    pendo.track('onboarding_completed', {
-      url: url.trim(),
-      audience: audience,
-      core_action: coreAction.trim(),
-      snippet_copied: snippetCopiedRef.current,
-      setup_duration_ms: Date.now() - startTime,
-    });
-    navigate('/dashboard');
+    try {
+      const result = await onboardProduct({
+        url,
+        product_type: audience.toLowerCase(),
+        core_action: coreAction,
+        user_id: 'default',
+      });
+      setLoading(false);
+      pendo.track('onboarding_completed', {
+        url: url.trim(),
+        audience: audience,
+        core_action: coreAction.trim(),
+        snippet_copied: snippetCopiedRef.current,
+        setup_duration_ms: Date.now() - startTime,
+      });
+      navigate(`/dashboard?productId=${result.product_id}`);
+    } catch (err) {
+      setLoading(false);
+      setErrors({ submit: err.response?.data?.detail || 'Failed to onboard product. Please try again.' });
+    }
   };
 
   const handleCopy = async () => {
@@ -211,6 +223,11 @@ export default function Onboarding() {
               {step === STEPS.length - 1 ? (loading ? 'Setting up...' : 'Go to Dashboard') : 'Continue'}
             </Button>
           </div>
+          {errors.submit && (
+            <div className="mt-4">
+              <StatusMessage type="error">{errors.submit}</StatusMessage>
+            </div>
+          )}
         </div>
       </main>
     </div>

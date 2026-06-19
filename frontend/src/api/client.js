@@ -3,27 +3,41 @@ import API_BASE_URL from '../config';
 
 const client = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
+  timeout: 30000,
   headers: { 'Content-Type': 'application/json' },
 });
 
-export async function analyzeProduct(url) {
-  const res = await client.post('/analyze', { url });
+export async function onboardProduct(data) {
+  const res = await client.post('/api/onboard', data);
   return res.data;
 }
 
-export async function getDashboardData() {
-  const res = await client.get('/dashboard');
+export async function getMetrics(productId) {
+  const res = await client.get(`/api/metrics/${productId}`);
   return res.data;
 }
 
-export async function askAgent(question) {
-  const res = await client.post('/agent/ask', { question });
+export async function getBehavior(productId) {
+  const res = await client.get(`/api/behavior/${productId}`);
   return res.data;
 }
 
-export async function getBehaviorData() {
-  const res = await client.get('/behavior');
+export async function getInsights(productId) {
+  const res = await client.get(`/api/insights/${productId}`);
+  return res.data;
+}
+
+export async function askAgent(productId, userId, message) {
+  const res = await client.post('/api/agent/chat', {
+    product_id: productId,
+    user_id: userId,
+    message,
+  });
+  return res.data;
+}
+
+export async function getProduct(productId) {
+  const res = await client.get(`/api/product/${productId}`);
   return res.data;
 }
 

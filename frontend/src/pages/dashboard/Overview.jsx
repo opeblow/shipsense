@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import MetricCard from '../../components/MetricCard';
 import Card from '../../components/Card';
 import Loading from '../../components/Loading';
 import StatusMessage from '../../components/StatusMessage';
-import { METRICS, AI_SUMMARY, RECOMMENDED_ACTIONS } from '../../data/mock';
+import { getMetrics, getInsights } from '../../api/client';
 
 function EffortBadge({ level }) {
   const colors = {
@@ -19,14 +20,48 @@ function EffortBadge({ level }) {
 }
 
 export default function Overview() {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const productId = searchParams.get('productId');
+
+  const [metrics, setMetrics] = useState(null);
+  const [insights, setInsights] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 600);
-    return () => clearTimeout(t);
-  }, []);
+    if (!productId) {
+      navigate('/onboard', { replace: true });
+      return;
+    }
 
+    let cancelled = false;
+    async function fetchData() {
+      try {
+        const [m, i] = await Promise.all([
+          getMetrics(productId),
+          getInsights(productId),
+        ]);
+        if (!cancelled) {
+          setMetrics(m);
+          setInsights(i);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err.response?.data?.detail || 'Failed to load dashboard data');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    fetchData();
+    return () => { cancelled = true; };
+  }, [productId, navigate]);
+
+  if (!productId) return null;
   if (loading) return <Loading text="Loading dashboard..." />;
+  if (error) return <StatusMessage type="error">{error}</StatusMessage>;
+  if (!metrics) return null;
 
   return (
     <div className="flex flex-col gap-8">
@@ -37,47 +72,51 @@ export default function Overview() {
 
       {/* Metrics row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <MetricCard label={METRICS.activeUsers.label} value={METRICS.activeUsers.value} change={METRICS.activeUsers.change} />
-        <MetricCard label={METRICS.avgSession.label} value={METRICS.avgSession.value} change={METRICS.avgSession.change} />
-        <MetricCard label={METRICS.dropoffRate.label} value={METRICS.dropoffRate.value} change={METRICS.dropoffRate.change} />
-        <MetricCard label={METRICS.topAction.label} value={METRICS.topAction.value} change={METRICS.topAction.change} />
+        <MetricCard label="Active Users" value={metrics.active_users.toLocaleString()} />
+        <MetricCard label="Avg Session" value={metrics.avg_session} />
+        <MetricCard label="Drop-off Rate" value={metrics.drop_off_rate} />
+        <MetricCard label="Top Action" value={metrics.top_action} />
       </div>
 
       {/* AI Summary */}
-      <Card>
-        <div className="flex items-start gap-3">
-          <div className="w-7 h-7 bg-accent flex items-center justify-center flex-shrink-0 mt-0.5">
-            <span className="text-xs font-bold text-white">AI</span>
+      {insights?.summary && (
+        <Card>
+          <div className="flex items-start gap-3">
+            <div className="w-7 h-7 bg-accent flex items-center justify-center flex-shrink-0 mt-0.5">
+              <span className="text-xs font-bold text-white">AI</span>
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-text mb-2">AI Summary</h3>
+              <p className="text-sm text-text-secondary leading-relaxed">{insights.summary}</p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-sm font-semibold text-text mb-2">AI Summary</h3>
-            <p className="text-sm text-text-secondary leading-relaxed">{AI_SUMMARY.text}</p>
-          </div>
-        </div>
-      </Card>
+        </Card>
+      )}
 
       {/* Recommended Actions */}
-      <div>
-        <h2 className="text-sm font-semibold text-text mb-3">Recommended Actions</h2>
-        <div className="flex flex-col gap-3">
-          {RECOMMENDED_ACTIONS.map((action) => (
-            <Card key={action.id}>
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-sm font-medium text-text">{action.title}</span>
+      {insights?.recommended_actions?.length > 0 && (
+        <div>
+          <h2 className="text-sm font-semibold text-text mb-3">Recommended Actions</h2>
+          <div className="flex flex-col gap-3">
+            {insights.recommended_actions.map((action, i) => (
+              <Card key={i}>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-sm font-medium text-text">{action.title}</span>
+                    </div>
+                    <p className="text-sm text-text-secondary">{action.description}</p>
                   </div>
-                  <p className="text-sm text-text-secondary">{action.description}</p>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <EffortBadge level={action.effort} />
+                    <span className="text-xs text-text-tertiary">Impact: {action.impact}</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <EffortBadge level={action.effort} />
-                  <span className="text-xs text-text-tertiary">Impact: {action.impact}</span>
-                </div>
-              </div>
-            </Card>
-          ))}
+              </Card>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
