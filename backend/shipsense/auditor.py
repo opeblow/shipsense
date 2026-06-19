@@ -341,7 +341,9 @@ async def scrape_page(url: str) -> dict:
                                       "[role=complementary], [role=contentinfo], "
                                       "[role=form], [role=search]"))
     aria_labels = len(soup.select("[aria-label], [aria-labelledby]"))
-    skip_link = bool(soup.select_one("a[href^=#main], a[href^=#content], a[href^=#skip]"))
+    skip_link = bool(
+        soup.find("a", href=lambda v: v and any(v.startswith(x) for x in ("#main", "#content", "#skip", "#primary")))
+    )
 
     # ── Resource sizes ──
     inline_scripts = len(soup.find_all("script", string=True))
