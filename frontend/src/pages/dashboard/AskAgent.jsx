@@ -26,20 +26,32 @@ export default function AskAgent() {
     setQuery('');
     setError('');
     setLoading(true);
+    const startTime = Date.now();
 
     // Simulate agent response
     await new Promise((r) => setTimeout(r, 1000));
+
+    const answer = 'Based on your data, the biggest opportunity is reducing friction in the API key configuration step. Users who complete onboarding see 3x higher 7-day retention.';
+    const dataPoint = '42% of users complete onboarding · 63% drop at step 3';
 
     setMessages((prev) => [
       ...prev,
       {
         id: Date.now(),
         question: q,
-        answer: 'Based on your data, the biggest opportunity is reducing friction in the API key configuration step. Users who complete onboarding see 3x higher 7-day retention.',
-        data: '42% of users complete onboarding · 63% drop at step 3',
+        answer: answer,
+        data: dataPoint,
       },
     ]);
     setLoading(false);
+    pendo.track('agent_question_asked', {
+      query: q.substring(0, 200),
+      query_length: q.length,
+      response_length: answer.length,
+      data_point: dataPoint,
+      message_count: messages.length + 1,
+      response_time_ms: Date.now() - startTime,
+    });
   };
 
   return (

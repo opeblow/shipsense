@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Button from '../components/Button';
 import Input from '../components/Input';
@@ -36,6 +36,7 @@ export default function Onboarding() {
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
+  const snippetCopiedRef = useRef(false);
 
   const canProceed = () => {
     if (step === 0) return url.trim().length > 0;
@@ -53,6 +54,14 @@ export default function Onboarding() {
     if (Object.keys(e).length > 0) return;
 
     if (step < STEPS.length - 1) {
+      pendo.track('onboarding_step_completed', {
+        step_number: step + 1,
+        step_title: STEPS[step].title,
+        url: url.trim(),
+        audience: audience || '',
+        core_action: coreAction.trim(),
+        total_steps: STEPS.length,
+      });
       setStep((s) => s + 1);
     } else {
       handleFinish();
@@ -61,8 +70,16 @@ export default function Onboarding() {
 
   const handleFinish = async () => {
     setLoading(true);
+    const startTime = Date.now();
     await new Promise((r) => setTimeout(r, 2000));
     setLoading(false);
+    pendo.track('onboarding_completed', {
+      url: url.trim(),
+      audience: audience,
+      core_action: coreAction.trim(),
+      snippet_copied: snippetCopiedRef.current,
+      setup_duration_ms: Date.now() - startTime,
+    });
     navigate('/dashboard');
   };
 
@@ -70,7 +87,13 @@ export default function Onboarding() {
     try {
       await navigator.clipboard.writeText(NOVUS_SNIPPET);
       setCopied(true);
+      snippetCopiedRef.current = true;
       setTimeout(() => setCopied(false), 2000);
+      pendo.track('snippet_copied', {
+        snippet_type: 'novus_tracker',
+        copy_success: true,
+        onboarding_step: 4,
+      });
     } catch {
       // ignore
     }
