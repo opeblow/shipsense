@@ -241,7 +241,7 @@ async def scrape_page(url: str) -> dict:
     has_robots = bool(soup.select_one("meta[name=robots]"))
     og_tags = len(soup.find_all("meta", property=re.compile(r"^og:")))
     twitter_tags = len(soup.find_all("meta", attrs={"name": re.compile(r"^twitter:")}))
-    has_json_ld = bool(soup.select_one("script[type=application/ld+json]"))
+    has_json_ld = bool(soup.find("script", type=lambda v: v and "ld+json" in v))
 
     # ── Headings ──
     h1_tags = soup.find_all("h1")
