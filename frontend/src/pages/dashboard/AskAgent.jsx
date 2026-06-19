@@ -11,6 +11,7 @@ export default function AskAgent() {
   const [error, setError] = useState('');
   const inputRef = useRef(null);
   const listRef = useRef(null);
+  const [conversationId] = useState(() => crypto.randomUUID());
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -28,21 +29,39 @@ export default function AskAgent() {
     setLoading(true);
     const startTime = Date.now();
 
+    const promptMessageId = crypto.randomUUID();
+    window.pendo?.trackAgent("prompt", {
+      agentId: "l8vIAIZmKxBHnErFU7JiizOHrMo",
+      conversationId,
+      messageId: promptMessageId,
+      content: q,
+      suggestedPrompt: false,
+    });
+
     // Simulate agent response
     await new Promise((r) => setTimeout(r, 1000));
 
-    const answer = 'Based on your data, the biggest opportunity is reducing friction in the API key configuration step. Users who complete onboarding see 3x higher 7-day retention.';
+const responseMessageId = crypto.randomUUID();
+    const answer = 'Based on your data, the biggest opportunity is reducing friction in the API key configuration step. Users who ...';
     const dataPoint = '42% of users complete onboarding · 63% drop at step 3';
 
     setMessages((prev) => [
       ...prev,
       {
-        id: Date.now(),
+        id: responseMessageId,
         question: q,
         answer: answer,
         data: dataPoint,
       },
     ]);
+
+    window.pendo?.trackAgent("agent_response", {
+      agentId: "l8vIAIZmKxBHnErFU7JiizOHrMo",
+      conversationId,
+      messageId: responseMessageId,
+      content: answer,
+    });
+
     setLoading(false);
     pendo.track('agent_question_asked', {
       query: q.substring(0, 200),
