@@ -244,6 +244,15 @@ def get_insights(product_id: int):
     if not product:
         raise HTTPException(status_code=404, detail=f"Product #{product_id} not found")
 
+    saved = db.get_latest_insight(product_id)
+    if saved:
+        return InsightsResponse(
+            summary=saved["summary"],
+            recommended_actions=[
+                RecommendedAction(**a) for a in json.loads(saved["actions"])
+            ],
+        )
+
     events = db.get_events(product_id)
     active_users = analyzer.get_active_users(events)
     avg_session = analyzer.get_avg_session(events)
