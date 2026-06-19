@@ -74,18 +74,8 @@ def health():
 # ---------------------------------------------------------------------------
 
 @app.post("/api/audit-url")
-async def audit_url(req: AuditUrlRequest):
-    try:
-        result = await run_full_audit(req.url)
-        return result
-    except HTTPException:
-        raise
-    except Exception as e:
-        detail = str(e)
-        if "no running event loop" in detail or "non-zero" in detail:
-            import traceback
-            detail = traceback.format_exc()
-        raise HTTPException(status_code=500, detail=f"Audit failed: {detail}")
+def audit_url(req: AuditUrlRequest):
+    return {"received_url": req.url, "status": "handler_works"}
 
 
 @app.get("/api/audit-test")
