@@ -76,51 +76,11 @@ def health():
 def audit_url(req: AuditUrlRequest):
     try:
         result = run_full_audit(req.url)
-        result.pop("error", None)
         return result
     except HTTPException:
         raise
     except Exception as e:
-        import traceback, sys
-        exc_type, exc_value, exc_tb = sys.exc_info()
-        tb_lines = traceback.format_exception(exc_type, exc_value, exc_tb)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Audit failed: {str(e)}\n{''.join(tb_lines)}"
-        )
-
-
-@app.get("/api/audit-test")
-def audit_test():
-    result = {"imports_ok": {}}
-    try:
-        import httpx
-        result["imports_ok"]["httpx"] = True
-    except Exception as e:
-        result["imports_ok"]["httpx"] = str(e)
-    try:
-        from bs4 import BeautifulSoup
-        result["imports_ok"]["bs4"] = True
-    except Exception as e:
-        result["imports_ok"]["bs4"] = str(e)
-    try:
-        import lxml
-        result["imports_ok"]["lxml"] = True
-    except Exception as e:
-        result["imports_ok"]["lxml"] = str(e)
-    try:
-        from bs4 import BeautifulSoup
-        soup = BeautifulSoup("<html><body><p>test</p></body></html>", "lxml")
-        result["imports_ok"]["lxml_parse"] = True
-    except Exception as e:
-        result["imports_ok"]["lxml_parse"] = str(e)
-    try:
-        soup = BeautifulSoup("<html><body><input></body></html>", "lxml")
-        inputs = soup.select("input")
-        result["imports_ok"]["css_select"] = len(inputs)
-    except Exception as e:
-        result["imports_ok"]["css_select"] = str(e)
-    return result
+        raise HTTPException(status_code=500, detail=f"Audit failed: {str(e)}")
 
 
 # ---------------------------------------------------------------------------
