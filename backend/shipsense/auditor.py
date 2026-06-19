@@ -239,8 +239,8 @@ async def scrape_page(url: str) -> dict:
     canonical_href = canonical.get("href") if canonical else None
     hreflang_tags = len(soup.select("link[rel=alternate][hreflang]"))
     has_robots = bool(soup.select_one("meta[name=robots]"))
-    og_tags = len(soup.select("meta[property^=og:]"))
-    twitter_tags = len(soup.select("meta[name^=twitter:]"))
+    og_tags = len(soup.find_all("meta", property=re.compile(r"^og:")))
+    twitter_tags = len(soup.find_all("meta", attrs={"name": re.compile(r"^twitter:")}))
     has_json_ld = bool(soup.select_one("script[type=application/ld+json]"))
 
     # ── Headings ──
