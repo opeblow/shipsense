@@ -1,7 +1,6 @@
 import os
 import sys
 import json
-import asyncio
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -76,10 +75,8 @@ def health():
 @app.post("/api/audit-url")
 def audit_url(req: AuditUrlRequest):
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        result = loop.run_until_complete(run_full_audit(req.url))
-        loop.close()
+        result = run_full_audit(req.url)
+        result.pop("error", None)
         return result
     except HTTPException:
         raise

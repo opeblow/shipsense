@@ -1,7 +1,7 @@
-import asyncio
 import json
 import re
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import httpx
 from bs4 import BeautifulSoup
 
@@ -70,10 +70,12 @@ def _parse_pagespeed(data: dict) -> dict:
 
     diag_list = []
     for key, audit in audits_map.items():
-        if audit.get("details", {}).get("type") == "diagnostic" and audit.get("score") is not None and audit["score"] < 1:
+        d = audit.get("details", {}).get("type")
+        score = audit.get("score")
+        if d == "diagnostic" and score is not None and score < 1:
             diag_list.append({
                 "title": audit.get("title", key),
-                "score": round(audit["score"] * 100),
+                "score": round(score * 100),
             })
     diag_list.sort(key=lambda x: x["score"])
 
@@ -94,59 +96,55 @@ def _parse_pagespeed(data: dict) -> dict:
     }
 
 
-async def _try_pagespeed(url: str, strategy: str, client: httpx.AsyncClient) -> dict | None:
-    params = {
-        "url": url,
-        "category": ["performance", "accessibility", "seo", "best-practices"],
-        "strategy": strategy,
-    }
-    resp = await client.get(PAGESPEED_API, params=params)
-    if resp.status_code == 429:
-        return None
-    resp.raise_for_status()
-    return _parse_pagespeed(resp.json())
-
-
-async def run_pagespeed_audit(url: str) -> dict:
+def run_pagespeed_audit(url: str) -> dict:
     retries = [0, 2, 4]
     strategies = ["mobile", "desktop"]
     last_error = None
 
-    async with httpx.AsyncClient(timeout=PAGESPEED_TIMEOUT) as c:
-        for strategy in strategies:
-            for wait in retries:
-                if wait:
-                    await asyncio.sleep(wait)
-                try:
-                    result = await _try_pagespeed(url, strategy, c)
-                    if result is not None:
-                        result["strategy_used"] = strategy
-                        return result
-                    last_error = "Rate limited (429) on all retries"
-                except httpx.HTTPStatusError as e:
-                    if e.response.status_code == 429:
+    for strategy in strategies:
+        for wait in retries:
+            if wait:
+                import time
+                time.sleep(wait)
+            try:
+                params = {
+                    "url": url,
+                    "category": ["performance", "accessibility", "seo", "best-practices"],
+                    "strategy": strategy,
+                }
+                with httpx.Client(timeout=PAGESPEED_TIMEOUT) as c:
+                    resp = c.get(PAGESPEED_API, params=params)
+                    if resp.status_code == 429:
                         last_error = f"Rate limited on {strategy}"
                         continue
-                    last_error = f"HTTP {e.response.status_code} on {strategy}"
-                    break
-                except Exception as e:
-                    last_error = f"{str(e)} on {strategy}"
-                    break
+                    resp.raise_for_status()
+                    result = _parse_pagespeed(resp.json())
+                    result["strategy_used"] = strategy
+                    return result
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 429:
+                    last_error = f"Rate limited on {strategy}"
+                    continue
+                last_error = f"HTTP {e.response.status_code} on {strategy}"
+                break
+            except Exception as e:
+                last_error = f"{str(e)} on {strategy}"
+                break
 
     return {"error": last_error or "PageSpeed unavailable"}
 
 
 # ── Response Headers ───────────────────────────────────────────────────────
 
-async def analyze_headers(url: str) -> dict:
+def analyze_headers(url: str) -> dict:
     try:
-        async with httpx.AsyncClient(timeout=HEADERS_TIMEOUT, follow_redirects=True) as c:
-            resp = await c.head(url)
+        with httpx.Client(timeout=HEADERS_TIMEOUT, follow_redirects=True) as c:
+            resp = c.head(url)
             h = resp.headers
     except Exception:
         try:
-            async with httpx.AsyncClient(timeout=HEADERS_TIMEOUT, follow_redirects=True) as c:
-                resp = await c.get(url)
+            with httpx.Client(timeout=HEADERS_TIMEOUT, follow_redirects=True) as c:
+                resp = c.get(url)
                 h = resp.headers
         except Exception as e:
             return {"header_analysis_error": str(e)}
@@ -176,7 +174,7 @@ async def analyze_headers(url: str) -> dict:
 
 # ── HTML Scrape ────────────────────────────────────────────────────────────
 
-async def scrape_page(url: str) -> dict:
+def scrape_page(url: str) -> dict:
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -187,8 +185,8 @@ async def scrape_page(url: str) -> dict:
         "Accept-Language": "en-US,en;q=0.5",
     }
     try:
-        async with httpx.AsyncClient(timeout=SCRAPE_TIMEOUT, follow_redirects=True) as c:
-            resp = await c.get(url, headers=headers)
+        with httpx.Client(timeout=SCRAPE_TIMEOUT, follow_redirects=True) as c:
+            resp = c.get(url, headers=headers)
             resp.raise_for_status()
             html = resp.text
     except Exception as e:
@@ -200,8 +198,8 @@ async def scrape_page(url: str) -> dict:
     word_count = len(body_text.split())
 
     # ── Forms ──
+    form_inputs = len(soup.select("input, select, textarea"))
     forms = soup.find_all("form")
-    form_inputs = soup.select("input, select, textarea")
     password_fields = len(soup.select("input[type=password]"))
     email_fields = len(soup.select("input[type=email]"))
     submit_buttons = len(soup.select("button[type=submit], input[type=submit]"))
@@ -283,26 +281,21 @@ async def scrape_page(url: str) -> dict:
         else:
             internal_links += 1
 
-    # ── Performance from HTML ──
-    render_blocking = []
+    # ── Performance signals from HTML ──
+    render_blocking_count = 0
     for s in soup.find_all("script", src=True):
         if not s.get("async") and not s.get("defer"):
-            render_blocking.append(f"script:{s['src'][:80]}")
+            render_blocking_count += 1
     for l in soup.find_all("link", rel="stylesheet", href=True):
-        render_blocking.append(f"css:{l['href'][:80]}")
+        render_blocking_count += 1
     preconnect_hints = len(soup.select("link[rel=preconnect], link[rel=dns-prefetch]"))
     preload_hints = len(soup.select("link[rel=preload]"))
-    font_links = soup.select("link[href*=fonts]")
-    has_web_fonts = bool(font_links)
+    has_web_fonts = bool(soup.select("link[href*=fonts]"))
     has_font_display = False
     for style in soup.find_all("style"):
         if "@font-face" in style.get_text() and "font-display" in style.get_text():
             has_font_display = True
             break
-    for link in font_links:
-        css_text = ""
-        if link.get("as") == "style" or link.get("rel") == ["stylesheet"]:
-            has_web_fonts = True
 
     # ── CTAs ──
     cta_count = 0
@@ -369,23 +362,16 @@ async def scrape_page(url: str) -> dict:
         frameworks.append("Bootstrap")
 
     return {
-        # Forms & conversion
         "form_field_count": form_inputs,
         "form_count": len(forms),
         "has_password_field": password_fields > 0,
         "has_email_field": email_fields > 0,
         "submit_button_count": submit_buttons,
         "has_guest_checkout": has_guest,
-
-        # Tracking
         "tracking_script_count": tracking_count,
         "tracking_tools": list(set(tracking_details))[:8],
-
-        # Mobile
         "has_mobile_viewport": has_viewport,
         "viewport_width": viewport_width,
-
-        # SEO
         "page_title": title,
         "title_length": title_length,
         "meta_description": bool(meta_desc_content),
@@ -396,31 +382,21 @@ async def scrape_page(url: str) -> dict:
         "og_tag_count": og_tags,
         "twitter_tag_count": twitter_tags,
         "has_json_ld": has_json_ld,
-
-        # Headings
         "h1_count": h1_count,
         "h2_count": h2_count,
         "heading_issues": heading_issues,
-
-        # Images
         "total_images": total_images,
         "images_missing_alt": images_no_alt,
         "images_missing_dimensions": images_no_dimensions,
         "images_lazy_loaded": lazy_images,
-
-        # Links
         "internal_link_count": internal_links,
         "external_link_count": external_links,
         "broken_or_js_links": broken_href,
-
-        # Performance signals
-        "render_blocking_resources": len(render_blocking),
+        "render_blocking_resources": render_blocking_count,
         "preconnect_hints": preconnect_hints,
         "preload_hints": preload_hints,
         "has_web_fonts": has_web_fonts,
         "has_font_display": has_font_display,
-
-        # Content
         "word_count": word_count,
         "cta_count": cta_count,
         "has_cookie_banner": has_cookie_banner,
@@ -430,31 +406,28 @@ async def scrape_page(url: str) -> dict:
         "has_search": has_search,
         "has_footer": has_footer,
         "has_nav": has_nav,
-
-        # Accessibility
         "aria_landmark_count": aria_landmarks,
         "aria_labels_count": aria_labels,
         "has_skip_link": skip_link,
-
-        # Resources
         "inline_script_count": inline_scripts,
         "external_script_count": external_scripts,
         "inline_style_count": inline_styles,
         "external_style_count": external_styles,
-
-        # Tech
         "detected_frameworks": frameworks,
     }
 
 
 # ── Orchestrator ──────────────────────────────────────────────────────────
 
-async def run_full_audit(url: str) -> dict:
-    pagespeed_result, scrape_result, header_result = await asyncio.gather(
-        run_pagespeed_audit(url),
-        scrape_page(url),
-        analyze_headers(url),
-    )
+def run_full_audit(url: str) -> dict:
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        ps_future = pool.submit(run_pagespeed_audit, url)
+        scrape_future = pool.submit(scrape_page, url)
+        headers_future = pool.submit(analyze_headers, url)
+
+        pagespeed_result = ps_future.result()
+        scrape_result = scrape_future.result()
+        header_result = headers_future.result()
 
     result = {"url": url}
 
@@ -473,12 +446,8 @@ async def run_full_audit(url: str) -> dict:
 
     if "error" not in scrape_result:
         result.update(scrape_result)
-    else:
-        result.update({
-            "scrape_failed": True,
-        })
 
-    if "error" not in header_result:
+    if "header_analysis_error" not in header_result:
         result.update(header_result)
 
     return result
