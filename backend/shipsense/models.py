@@ -81,8 +81,6 @@ class AuditUrlResponse(BaseModel):
     has_cookie_banner: Optional[bool] = None
     has_popup: Optional[bool] = None
     has_autoplay_video: Optional[bool] = None
-    pagespeed_error: Optional[str] = None
-    scrape_error: Optional[str] = None
 
 
 class ProductResponse(BaseModel):
