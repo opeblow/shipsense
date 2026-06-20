@@ -10,7 +10,8 @@ def generate_insights(product, top_actions, drop_offs, active_users, avg_session
     """
     Generate insights using ONLY real data:
       - audit_data: live measurements from PageSpeed + HTML scrape of the user's URL
-      - top_actions / drop_offs: real events ingested via the Novus tracker (if any)
+      - top_actions / drop_offs: real events ingested via the ShipSense Event
+        Collector (if any)
 
     Never invents or estimates numbers.
     """
@@ -40,7 +41,7 @@ Respond with valid JSON only, in this exact format:
 }}"""
 
     elif has_real_events:
-        # Secondary path: real user events from the Novus tracker.
+        # Secondary path: real user events from the ShipSense Event Collector.
         context = _build_context(product, top_actions, drop_offs, active_users, avg_session, patterns, [])
         prompt = f"""You are ShipSense. Analyze this REAL product data and give ONE sharp insight with ONE recommendation.
 
@@ -166,7 +167,7 @@ def _fallback_audit_insights(audit_data, product):
         findings.append({
             "what_i_see": "The URL has been audited — no critical issues detected in automated checks.",
             "why_it_matters": "A baseline audit confirms your page loads and basic technical health is OK.",
-            "what_to_do": "Install the Novus tracker to start collecting real user behavior data for deeper insights.",
+            "what_to_do": "Install the ShipSense Event Collector to start collecting real user behavior data for deeper insights.",
             "effort": "Low",
             "impact": "High",
             "title": "Install tracker to get behavioral data",
@@ -195,13 +196,15 @@ def _fallback_audit_insights(audit_data, product):
 def _fallback_event_insights(product, top_actions, drop_offs, active_users, avg_session):
     """Fallback using real tracked events when LLM is unavailable."""
     top_action_name = top_actions[0]["action"]
-    top_action_pct = top_actions[0]["frequency"]
+    top_action_pct = top_actions[0]["user_frequency"]
+    top_action_users = top_actions[0]["unique_users"]
     biggest_drop = drop_offs[0] if drop_offs else None
 
     if biggest_drop:
         what_i_see = (
             f"{biggest_drop['drop_off_rate']} of users drop off at '{biggest_drop['step']}'. "
-            f"Only {top_action_pct} complete the top action ('{top_action_name}')."
+            f"{top_action_users} unique users ({top_action_pct}) performed "
+            f"'{top_action_name}'."
         )
         what_to_do = (
             f"Simplify or remove the '{biggest_drop['step']}' step. "
@@ -211,7 +214,8 @@ def _fallback_event_insights(product, top_actions, drop_offs, active_users, avg_
         title = f"Fix '{biggest_drop['step']}' drop-off"
     else:
         what_i_see = (
-            f"{top_action_pct} of users perform '{top_action_name}'. "
+            f"{top_action_users} unique users ({top_action_pct}) perform "
+            f"'{top_action_name}'. "
             f"Not enough data yet to pinpoint the biggest drop-off."
         )
         what_to_do = (
@@ -251,7 +255,7 @@ def _no_data_response(product):
             f"Without measured data, any insight would be a guess — and ShipSense doesn't guess.\n\n"
             f"WHAT TO DO:\n"
             f"Re-run the analysis from the onboarding page to fetch a live audit of your URL, "
-            f"or install the Novus tracker snippet to start collecting real user event data.\n\n"
+            f"or install the ShipSense Event Collector to start collecting real user event data.\n\n"
             f"EFFORT: Low\n"
             f"IMPACT: High"
         ),

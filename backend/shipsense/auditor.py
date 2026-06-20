@@ -4,6 +4,7 @@ import urllib.parse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import httpx
 from bs4 import BeautifulSoup
+from .url_security import safe_request, validate_public_url
 
 PAGESPEED_API = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
 PAGESPEED_TIMEOUT = 25
@@ -36,6 +37,12 @@ CTA_KEYWORDS = [
     "create account", "get early access", "request demo", "get demo",
     "talk to sales", "contact sales", "get access",
 ]
+
+
+def _clean_text(value, limit=160):
+    if not value:
+        return ""
+    return " ".join(str(value).split())[:limit]
 
 
 # ── PageSpeed ──────────────────────────────────────────────────────────────
@@ -97,6 +104,7 @@ def _parse_pagespeed(data: dict) -> dict:
 
 
 def run_pagespeed_audit(url: str) -> dict:
+    validate_public_url(url)
     retries = [0, 2, 4]
     strategies = ["mobile", "desktop"]
     last_error = None
@@ -138,14 +146,12 @@ def run_pagespeed_audit(url: str) -> dict:
 
 def analyze_headers(url: str) -> dict:
     try:
-        with httpx.Client(timeout=HEADERS_TIMEOUT, follow_redirects=True) as c:
-            resp = c.head(url)
-            h = resp.headers
+        resp = safe_request("HEAD", url, timeout=HEADERS_TIMEOUT)
+        h = resp.headers
     except Exception:
         try:
-            with httpx.Client(timeout=HEADERS_TIMEOUT, follow_redirects=True) as c:
-                resp = c.get(url)
-                h = resp.headers
+            resp = safe_request("GET", url, timeout=HEADERS_TIMEOUT)
+            h = resp.headers
         except Exception as e:
             return {"header_analysis_error": str(e)}
 
@@ -167,7 +173,7 @@ def analyze_headers(url: str) -> dict:
         "has_compression": "content-encoding" in h,
         "content_type": h.get("content-type"),
         "server": h.get("server", h.get("via", "")),
-        "redirect_count": len(resp.history) if hasattr(resp, "history") and resp.history else 0,
+        "redirect_count": len(resp.history) if resp.history else 0,
         "final_status": resp.status_code,
     }
 
@@ -185,10 +191,14 @@ def scrape_page(url: str) -> dict:
         "Accept-Language": "en-US,en;q=0.5",
     }
     try:
-        with httpx.Client(timeout=SCRAPE_TIMEOUT, follow_redirects=True) as c:
-            resp = c.get(url, headers=headers)
-            resp.raise_for_status()
-            html = resp.text
+        resp = safe_request(
+            "GET",
+            url,
+            timeout=SCRAPE_TIMEOUT,
+            headers=headers,
+        )
+        resp.raise_for_status()
+        html = resp.text
     except Exception as e:
         return {"error": f"Page scrape failed: {str(e)}"}
 
@@ -247,6 +257,7 @@ def scrape_page(url: str) -> dict:
     # ── Headings ──
     h1_tags = soup.find_all("h1")
     h1_count = len(h1_tags)
+    h1_text = _clean_text(h1_tags[0].get_text(" ", strip=True)) if h1_tags else None
     h2_count = len(soup.find_all("h2"))
     heading_issues = []
     if h1_count == 0:
@@ -299,11 +310,54 @@ def scrape_page(url: str) -> dict:
 
     # ── CTAs ──
     cta_count = 0
+    primary_ctas = []
     for tag in ("a", "button"):
         for el in soup.select(f"{tag}:not(nav {tag}):not(footer {tag})"):
-            text = el.get_text(strip=True).lower()
-            if any(kw in text for kw in CTA_KEYWORDS):
+            raw_text = _clean_text(el.get_text(" ", strip=True), 100)
+            text = raw_text.lower()
+            if raw_text and any(kw in text for kw in CTA_KEYWORDS):
                 cta_count += 1
+                if len(primary_ctas) < 8:
+                    primary_ctas.append({
+                        "text": raw_text,
+                        "href": _clean_text(el.get("href"), 240) or None,
+                        "element": tag,
+                    })
+
+    form_summaries = []
+    for index, form in enumerate(forms[:5], start=1):
+        fields = form.select("input, select, textarea")
+        field_types = []
+        for field in fields:
+            field_type = (
+                field.get("type")
+                or field.name
+                or "unknown"
+            ).lower()
+            if field_type not in field_types:
+                field_types.append(field_type)
+        submit = form.select_one("button[type=submit], input[type=submit], button")
+        submit_text = None
+        if submit:
+            submit_text = _clean_text(
+                submit.get("value") or submit.get_text(" ", strip=True),
+                100,
+            ) or None
+        form_summaries.append({
+            "index": index,
+            "field_count": len(fields),
+            "field_types": field_types[:10],
+            "submit_text": submit_text,
+            "action": _clean_text(form.get("action"), 240) or None,
+        })
+
+    nav_labels = []
+    for element in soup.select("nav a, header a"):
+        label = _clean_text(element.get_text(" ", strip=True), 80)
+        if label and label not in nav_labels:
+            nav_labels.append(label)
+        if len(nav_labels) >= 12:
+            break
 
     # ── Content elements ──
     has_cookie_banner = bool(
@@ -373,6 +427,8 @@ def scrape_page(url: str) -> dict:
         "has_mobile_viewport": has_viewport,
         "viewport_width": viewport_width,
         "page_title": title,
+        "h1_text": h1_text,
+        "meta_description_text": meta_desc_content,
         "title_length": title_length,
         "meta_description": bool(meta_desc_content),
         "meta_description_length": meta_desc_length,
@@ -399,6 +455,9 @@ def scrape_page(url: str) -> dict:
         "has_font_display": has_font_display,
         "word_count": word_count,
         "cta_count": cta_count,
+        "primary_ctas": primary_ctas,
+        "form_summaries": form_summaries,
+        "nav_labels": nav_labels,
         "has_cookie_banner": has_cookie_banner,
         "has_popup": has_popup,
         "has_autoplay_video": autoplay_video,
@@ -420,6 +479,7 @@ def scrape_page(url: str) -> dict:
 # ── Orchestrator ──────────────────────────────────────────────────────────
 
 def run_full_audit(url: str) -> dict:
+    validate_public_url(url)
     with ThreadPoolExecutor(max_workers=3) as pool:
         ps_future = pool.submit(run_pagespeed_audit, url)
         scrape_future = pool.submit(scrape_page, url)
@@ -442,6 +502,7 @@ def run_full_audit(url: str) -> dict:
             "core_web_vitals": None,
             "pagespeed_opportunities": None,
             "pagespeed_diagnostics": None,
+            "pagespeed_error": pagespeed_result["error"],
         })
 
     if "error" not in scrape_result:

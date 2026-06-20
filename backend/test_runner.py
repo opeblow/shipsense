@@ -73,10 +73,10 @@ print("\n=== TEST 4: AGENT CHAT ===")
 try:
     resp4 = post("/api/agent/chat", {"product_id": pid, "user_id": "user_tester", "message": "Why are users leaving?"})
     test("Chat reply received", bool(resp4.get("reply")), f"len={len(resp4['reply'])}")
-    test("Has data point", bool(resp4.get("data_point")))
+    test("Has evidence citations field", isinstance(resp4.get("citations"), list))
     test("Has confidence score", resp4.get("confidence", 0) > 0, f"confidence={resp4['confidence']}")
     print(f"  Reply: {resp4['reply']}")
-    print(f"  Data point: {resp4.get('data_point', 'N/A')}")
+    print(f"  Citations: {json.dumps(resp4.get('citations', []), indent=2)}")
 except Exception as e:
     test("Chat endpoint works", False, str(e))
 

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Novus Tracker Demo — generate real events</title>
+    <title>ShipSense Event Collector Demo</title>
     <style>
       body { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 20px; color: #1a1a1a; }
       h1 { font-size: 20px; }
@@ -19,27 +19,28 @@
     </style>
   </head>
   <body>
-    <h1>Novus Tracker Demo</h1>
+    <h1>ShipSense Event Collector Demo</h1>
     <p>
-      This page simulates a <strong>real product</strong> that installed the Novus tracker.
-      Enter the <code>product_id</code> from onboarding, start tracking, then click the buttons —
+      This page simulates a <strong>real product</strong> that installed the ShipSense Event Collector.
+      Enter the product ID and collector key from onboarding, start tracking, then click the buttons —
       each click is a <strong>real</strong> event POSTed to <code>/api/behavior/ingest</code>
       and will appear in your dashboard.
     </p>
 
     <div class="row">
-      <input id="pid" type="number" placeholder="product_id (e.g. 1)" />
+      <input id="pid" type="text" placeholder="product ID (prd_...)" />
+      <input id="collector-key" type="text" placeholder="collector key (col_...)" />
       <button id="start">Start tracking</button>
     </div>
     <p class="hint">Tip: append <code>?pid=1</code> to this page's URL to auto-fill.</p>
 
     <div class="actions">
-      <button data-novus="create project">Create project</button>
-      <button data-novus="configure api key">Configure API key</button>
-      <button data-novus="invite team member">Invite team member</button>
-      <button data-novus="view analytics">View analytics</button>
-      <button data-novus="export report">Export report</button>
-      <a href="#pricing" data-novus="open pricing">Open pricing</a>
+      <button data-shipsense="create project">Create project</button>
+      <button data-shipsense="configure api key">Configure API key</button>
+      <button data-shipsense="invite team member">Invite team member</button>
+      <button data-shipsense="view analytics">View analytics</button>
+      <button data-shipsense="export report">Export report</button>
+      <a href="#pricing" data-shipsense="open pricing">Open pricing</a>
     </div>
 
     <div class="status" id="status"></div>
@@ -56,14 +57,16 @@
 
       document.getElementById('start').addEventListener('click', function () {
         var pid = pidInput.value.trim();
-        if (!pid) { statusEl.style.color = '#c0392b'; statusEl.textContent = 'Enter a product_id first.'; return; }
-        if (document.querySelector('script[src*="novus.js"]')) {
+        var collectorKey = document.getElementById('collector-key').value.trim();
+        if (!pid || !collectorKey) { statusEl.style.color = '#c0392b'; statusEl.textContent = 'Enter the product ID and collector key first.'; return; }
+        if (document.querySelector('script[src*="shipsense-collector.js"]')) {
           statusEl.textContent = 'Tracker already running. Click the buttons to generate events.';
           return;
         }
         var s = document.createElement('script');
-        s.src = API_ORIGIN + '/static/novus.js';
-        s.setAttribute('data-app-id', pid);
+        s.src = API_ORIGIN + '/static/shipsense-collector.js';
+        s.setAttribute('data-product-id', pid);
+        s.setAttribute('data-collector-key', collectorKey);
         s.setAttribute('data-api-url', API_ORIGIN);
         document.head.appendChild(s);
         statusEl.style.color = '#2a7d2a';

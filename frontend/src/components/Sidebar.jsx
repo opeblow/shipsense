@@ -1,11 +1,12 @@
 import { NavLink, useSearchParams } from 'react-router-dom';
 
 const ITEMS = [
-  { to: '/dashboard', label: 'Overview', icon: '01' },
-  { to: '/dashboard/behavior', label: 'User Behavior', icon: '02' },
-  { to: '/dashboard/insights', label: 'AI Insights', icon: '03' },
-  { to: '/dashboard/ask', label: 'Ask Agent', icon: '04' },
-  { to: '/dashboard/settings', label: 'Settings', icon: '05' },
+  { to: '/dashboard', label: 'Today', icon: '01' },
+  { to: '/dashboard/behavior', label: 'Evidence', icon: '02' },
+  { to: '/dashboard/experiments', label: 'Experiments', icon: '03' },
+  { to: '/dashboard/insights', label: 'Technical Health', icon: '04' },
+  { to: '/dashboard/ask', label: 'Analyst', icon: '05' },
+  { to: '/dashboard/settings', label: 'Settings', icon: '06' },
 ];
 
 function SidebarIcon() {

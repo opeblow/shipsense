@@ -1,34 +1,24 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import StatusMessage from '../components/StatusMessage';
-import { onboardProduct, auditUrl } from '../api/client';
+import { onboardProduct, auditUrl, createSampleProduct } from '../api/client';
 
 const STEPS = [
   { title: 'What\'s your product URL?' },
   { title: 'Who is it for?' },
   { title: 'What\'s the core action?' },
-  { title: 'Install Novus snippet' },
-  { title: 'You\'re live' },
+  { title: 'Build your baseline' },
+  { title: 'Connect real behavior' },
 ];
 
 const AUDIENCES = ['Consumers', 'B2B', 'Internal tool'];
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://shipsense-knrs.onrender.com';
-const NOVUS_SNIPPET = `<!-- ShipSense Novus Tracker -->
-<script>
-  (function(w,d,s){
-    w._novusQueue = w._novusQueue || [];
-    w._novusAppId = 'YOUR_APP_ID';
-    var f=d.getElementsByTagName(s)[0],
-        j=d.createElement(s);
-    j.async=true;
-    j.src='${API_URL}/static/novus.js';
-    j.setAttribute('data-api-url','${API_URL}');
-    f.parentNode.insertBefore(j,f);
-  })(window,document,'script');
-</script>`;
+function collectorSnippet(productId, collectorKey) {
+  return `<script src="${API_URL}/static/shipsense-collector.js" data-product-id="${productId}" data-collector-key="${collectorKey}" data-api-url="${API_URL}"></script>`;
+}
 
 const AUDIT_STEPS = [
   { label: 'Running PageSpeed audit...', key: 'pagespeed' },
@@ -43,6 +33,10 @@ export default function Onboarding() {
   const [url, setUrl] = useState(location.state?.url || '');
   const [audience, setAudience] = useState('');
   const [coreAction, setCoreAction] = useState('');
+  const [targetUser, setTargetUser] = useState('');
+  const [userProblem, setUserProblem] = useState('');
+  const [valueProposition, setValueProposition] = useState('');
+  const [flowSteps, setFlowSteps] = useState('');
   const [copied, setCopied] = useState(false);
   const [errors, setErrors] = useState({});
   const snippetCopiedRef = useRef(false);
@@ -51,8 +45,9 @@ export default function Onboarding() {
   const [analyzing, setAnalyzing] = useState(false);
   const [auditProgress, setAuditProgress] = useState(null);
   const [auditError, setAuditError] = useState(null);
+  const [creatingSample, setCreatingSample] = useState(false);
 
-  const runAnalysis = async () => {
+  const runAnalysis = useCallback(async () => {
     setAnalyzing(true);
     setAuditProgress(0);
     setAuditError(null);
@@ -67,6 +62,17 @@ export default function Onboarding() {
         product_type: audience.toLowerCase(),
         core_action: coreAction,
         user_id: 'default',
+        critical_flow: flowSteps
+          .split(',')
+          .map((step) => step.trim())
+          .filter(Boolean),
+        product_context: {
+          target_user: targetUser,
+          user_problem: userProblem,
+          value_proposition: valueProposition,
+          business_goal: coreAction,
+          constraints: '',
+        },
         audit_data: auditData,
       });
 
@@ -82,7 +88,12 @@ export default function Onboarding() {
       console.error('[Onboarding] Analysis failed:', err);
       const detail = err.response?.data?.detail;
       const status = err.response?.status;
-      const msg = detail || (status ? `Server error (${status})` : err.message) || 'Analysis failed. Please try again.';
+      const detailMessage = typeof detail === 'string'
+        ? detail
+        : Array.isArray(detail)
+          ? detail.map((item) => item.msg).filter(Boolean).join(' ')
+          : '';
+      const msg = detailMessage || (status ? `Server error (${status})` : err.message) || 'Analysis failed. Please try again.';
       const isAuditFailure = msg.toLowerCase().includes('audit') || msg.toLowerCase().includes('scrape') || msg.toLowerCase().includes('timeout');
       setAuditError(isAuditFailure
         ? "We couldn't fully audit this URL — try a different one"
@@ -91,19 +102,29 @@ export default function Onboarding() {
     } finally {
       setAnalyzing(false);
     }
-  };
+  }, [url, audience, coreAction, flowSteps, targetUser, userProblem, valueProposition]);
 
   useEffect(() => {
-    if (step === 4 && !analysisTriggeredRef.current) {
+    if (step === 3 && !analysisTriggeredRef.current) {
       analysisTriggeredRef.current = true;
       runAnalysis();
     }
-  }, [step]);
+  }, [step, runAnalysis]);
 
   const canProceed = () => {
     if (step === 0) return url.trim().length > 0;
     if (step === 1) return audience.length > 0;
-    if (step === 2) return coreAction.trim().length > 0;
+    if (step === 2) {
+      const steps = flowSteps.split(',').map((item) => item.trim()).filter(Boolean);
+      return (
+        coreAction.trim().length > 0
+        && targetUser.trim().length > 0
+        && userProblem.trim().length > 0
+        && valueProposition.trim().length > 0
+        && steps.length >= 2
+      );
+    }
+    if (step === 3) return Boolean(analysisResult) && !analyzing;
     return true;
   };
 
@@ -112,6 +133,13 @@ export default function Onboarding() {
     if (step === 0 && !url.trim()) e.url = 'We need a URL to analyze your product';
     if (step === 1 && !audience) e.audience = 'Pick who your product serves';
     if (step === 2 && !coreAction.trim()) e.coreAction = 'Tell us the one thing users should do';
+    if (step === 2 && !targetUser.trim()) e.targetUser = 'Describe the primary user';
+    if (step === 2 && !userProblem.trim()) e.userProblem = 'Describe the problem they need solved';
+    if (step === 2 && !valueProposition.trim()) e.valueProposition = 'Describe why they should choose this product';
+    if (step === 2) {
+      const steps = flowSteps.split(',').map((item) => item.trim()).filter(Boolean);
+      if (steps.length < 2) e.flowSteps = 'Define at least two ordered event names';
+    }
     setErrors(e);
     if (Object.keys(e).length > 0) return;
 
@@ -138,17 +166,41 @@ export default function Onboarding() {
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(NOVUS_SNIPPET);
+      if (!analysisResult?.product_id) return;
+      await navigator.clipboard.writeText(
+        collectorSnippet(analysisResult.product_id, analysisResult.collector_key),
+      );
       setCopied(true);
       snippetCopiedRef.current = true;
       setTimeout(() => setCopied(false), 2000);
       window.pendo?.track('snippet_copied', {
-        snippet_type: 'novus_tracker',
+        snippet_type: 'shipsense_event_collector',
         copy_success: true,
         onboarding_step: 4,
       });
     } catch {
       // ignore
+    }
+  };
+
+  const handleSampleWorkspace = async () => {
+    setCreatingSample(true);
+    setErrors({});
+    try {
+      const sample = await createSampleProduct();
+      window.pendo?.track('sample_workspace_created', {
+        sample_data: true,
+      });
+      navigate(`/dashboard?productId=${sample.product_id}`);
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      setErrors({
+        submit: typeof detail === 'string'
+          ? detail
+          : 'Failed to create the sample workspace.',
+      });
+    } finally {
+      setCreatingSample(false);
     }
   };
 
@@ -188,6 +240,18 @@ export default function Onboarding() {
                   error={errors.url}
                   autoFocus
                 />
+                <div className="mt-6 pt-5 border-t border-border">
+                  <p className="text-xs text-text-tertiary mb-3">
+                    Want to inspect the full decision and experiment loop first?
+                  </p>
+                  <Button
+                    variant="secondary"
+                    onClick={handleSampleWorkspace}
+                    disabled={creatingSample}
+                  >
+                    {creatingSample ? 'Creating sample...' : 'Explore labelled sample data'}
+                  </Button>
+                </div>
               </div>
             )}
 
@@ -210,7 +274,7 @@ export default function Onboarding() {
             )}
 
             {step === 2 && (
-              <div className="mt-6">
+              <div className="mt-6 space-y-5">
                 <Input
                   value={coreAction}
                   onChange={(e) => setCoreAction(e.target.value)}
@@ -220,23 +284,38 @@ export default function Onboarding() {
                   hint="What's the one action that makes a user successful?"
                   autoFocus
                 />
+                <Input
+                  value={targetUser}
+                  onChange={(e) => setTargetUser(e.target.value)}
+                  placeholder="e.g. Solo founders shipping their first SaaS"
+                  error={errors.targetUser}
+                  hint="Who specifically is trying to complete this flow?"
+                />
+                <Input
+                  value={userProblem}
+                  onChange={(e) => setUserProblem(e.target.value)}
+                  placeholder="e.g. They cannot tell which onboarding issue to fix"
+                  error={errors.userProblem}
+                  hint="What problem brings them to the product?"
+                />
+                <Input
+                  value={valueProposition}
+                  onChange={(e) => setValueProposition(e.target.value)}
+                  placeholder="e.g. One evidence-backed action instead of another dashboard"
+                  error={errors.valueProposition}
+                  hint="What outcome or promise should be obvious to them?"
+                />
+                <Input
+                  value={flowSteps}
+                  onChange={(e) => setFlowSteps(e.target.value)}
+                  placeholder="landing viewed, signup started, account created"
+                  error={errors.flowSteps}
+                  hint="Enter the exact event names in order, separated by commas."
+                />
               </div>
             )}
 
             {step === 3 && (
-              <div className="mt-6">
-                <p className="text-sm text-text-secondary mb-4">
-                  Add this snippet to your <code className="text-accent bg-accent/5 px-1">&lt;head&gt;</code> tag.
-                </p>
-                <pre className="bg-[#0a0a0a] text-[#e5e5e5] p-4 text-xs overflow-x-auto border border-border mb-4 leading-relaxed">{NOVUS_SNIPPET}</pre>
-                <div className="flex items-center gap-3">
-                  <Button onClick={handleCopy}>{copied ? 'Copied' : 'Copy snippet'}</Button>
-                  <span className="text-xs text-text-tertiary">Or continue and do this later</span>
-                </div>
-              </div>
-            )}
-
-            {step === 4 && (
               <div className="mt-6">
                 {analyzing && (
                   <div className="space-y-4 py-4">
@@ -269,9 +348,9 @@ export default function Onboarding() {
                 {analysisResult && !analyzing && (
                   <>
                     <div className="bg-success/5 border border-success/20 p-4 mb-6">
-                      <p className="text-sm text-success font-medium">ShipSense has analyzed your product.</p>
+                      <p className="text-sm text-success font-medium">Your product-health baseline is ready.</p>
                       <p className="text-sm text-text-secondary mt-1">
-                        {url ? url.replace(/^https?:\/\//, '').split('/')[0] : 'Your product'} is set up.
+                        This result comes from a live technical audit. Behavioral evidence becomes available after the collector receives real events.
                       </p>
                     </div>
                     <div className="text-sm text-text-secondary leading-relaxed whitespace-pre-line">
@@ -279,6 +358,19 @@ export default function Onboarding() {
                     </div>
                   </>
                 )}
+              </div>
+            )}
+
+            {step === 4 && analysisResult && (
+              <div className="mt-6">
+                <p className="text-sm text-text-secondary mb-4">
+                  Add the ShipSense Event Collector to your <code className="text-accent bg-accent/5 px-1">&lt;head&gt;</code> to measure real user actions. This is separate from the official Novus by Pendo installation.
+                </p>
+                <pre className="bg-[#0a0a0a] text-[#e5e5e5] p-4 text-xs overflow-x-auto border border-border mb-4 leading-relaxed">{collectorSnippet(analysisResult.product_id, analysisResult.collector_key)}</pre>
+                <div className="flex items-center gap-3">
+                  <Button onClick={handleCopy}>{copied ? 'Copied' : 'Copy collector'}</Button>
+                  <span className="text-xs text-text-tertiary">You can install this later from Settings</span>
+                </div>
               </div>
             )}
           </div>

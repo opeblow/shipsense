@@ -5,12 +5,13 @@ import Table from '../../components/Table';
 import Card from '../../components/Card';
 import Loading from '../../components/Loading';
 import StatusMessage from '../../components/StatusMessage';
-import { getBehavior, getAudit } from '../../api/client';
+import { getBehavior, getAudit, getProduct } from '../../api/client';
 
 const COLUMNS = [
   { key: 'action', label: 'Action' },
-  { key: 'users', label: 'Users (real)' },
-  { key: 'frequency', label: 'Frequency' },
+  { key: 'uniqueUsers', label: 'Unique users' },
+  { key: 'eventCount', label: 'Occurrences' },
+  { key: 'userFrequency', label: 'User reach' },
   { key: 'dropoffAfter', label: 'Drop-off after' },
 ];
 
@@ -31,6 +32,7 @@ export default function UserBehavior() {
 
   const [behavior, setBehavior] = useState(null);
   const [audit, setAudit] = useState(null);
+  const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -40,14 +42,16 @@ export default function UserBehavior() {
     let cancelled = false;
     async function fetchData() {
       try {
-        const [beh, aud] = await Promise.allSettled([
+        const [beh, aud, prod] = await Promise.allSettled([
           getBehavior(productId),
           getAudit(productId),
+          getProduct(productId),
         ]);
         if (!cancelled) {
           if (beh.status === 'fulfilled') setBehavior(beh.value);
           else setError(beh.reason?.response?.data?.detail || 'Failed to load behavior data');
           if (aud.status === 'fulfilled') setAudit(aud.value?.audit);
+          if (prod.status === 'fulfilled') setProduct(prod.value);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -61,16 +65,21 @@ export default function UserBehavior() {
   if (loading) return <Loading text="Loading behavior data..." />;
 
   const hasRealEvents = behavior?.active_users > 0 || behavior?.top_actions?.length > 0;
+  const isSample = product?.is_sample;
+  const observedDropOffs = (behavior?.drop_off_points || []).filter((point) => (
+    (point.users_who_reached || 0) > 0 || (point.users_who_continued || 0) > 0
+  ));
 
   const chartData = behavior?.top_actions?.map((a) => ({
     action: a.action.length > 18 ? a.action.slice(0, 18) + '…' : a.action,
-    count: a.users,
+    count: a.unique_users,
   })) || [];
 
   const tableData = behavior?.top_actions?.map((a) => ({
     action: a.action,
-    users: typeof a.users === 'number' ? a.users.toLocaleString() : a.users,
-    frequency: a.frequency,
+    uniqueUsers: a.unique_users?.toLocaleString(),
+    eventCount: a.event_count?.toLocaleString(),
+    userFrequency: a.user_frequency,
     dropoffAfter: a.dropoff_after,
   })) || [];
 
@@ -81,7 +90,9 @@ export default function UserBehavior() {
       <div>
         <h1 className="text-xl font-semibold text-text">User Behavior</h1>
         <p className="text-sm text-text-secondary mt-1">
-          Real events from the Novus tracker — zero simulated data
+          {isSample
+            ? 'Synthetic sample events showing how ShipSense reads product behavior'
+            : 'Real events from the ShipSense Event Collector'}
         </p>
       </div>
 
@@ -92,12 +103,12 @@ export default function UserBehavior() {
         <Card>
           <div className="flex flex-col gap-3">
             <p className="text-sm font-medium text-text">
-              No user events recorded yet
+              No measured user events yet
             </p>
             <p className="text-sm text-text-secondary leading-relaxed">
-              Install the Novus tracker snippet on your site to start collecting real click, navigation,
-              and interaction data. Once users trigger events, this page will show their actual behavior —
-              top actions, drop-off points, session length, and more.
+              {isSample
+                ? 'This sample workspace is empty only if the demo data could not be loaded. Create a new sample workspace from onboarding to inspect the full behavior loop.'
+                : 'The live URL audit is real, but ShipSense has not received product events from this site yet. Install the collector to measure actual user actions, drop-off points, session length, and flow completion.'}
             </p>
             <p className="text-sm text-text-secondary">
               In the meantime, the{' '}
@@ -117,7 +128,9 @@ export default function UserBehavior() {
       {chartData.length > 0 && (
         <Card>
           <h3 className="text-sm font-semibold text-text mb-1">Top User Actions</h3>
-          <p className="text-xs text-text-tertiary mb-4">From real Novus tracker events</p>
+          <p className="text-xs text-text-tertiary mb-4">
+            Unique users from {isSample ? 'sample behavior events' : 'real collector events'}
+          </p>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} barSize={36}>
@@ -136,7 +149,7 @@ export default function UserBehavior() {
                 <Tooltip
                   contentStyle={{ background: '#fff', border: '1px solid #e5e5e5', borderRadius: 4, fontSize: 13 }}
                   cursor={{ fill: '#f7f7f7' }}
-                  formatter={(val) => [val.toLocaleString(), 'Users']}
+                  formatter={(val) => [val.toLocaleString(), 'Unique users']}
                 />
                 <Bar dataKey="count" radius={[2, 2, 0, 0]}>
                   {chartData.map((_, i) => (
@@ -152,8 +165,10 @@ export default function UserBehavior() {
       {/* Real session stats */}
       {hasRealEvents && (
         <Card>
-          <h3 className="text-sm font-semibold text-text mb-3">Session Stats (real)</h3>
-          <div className="grid grid-cols-2 gap-4">
+          <h3 className="text-sm font-semibold text-text mb-3">
+            {isSample ? 'Session Stats (sample)' : 'Session Stats (real)'}
+          </h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div>
               <p className="text-2xl font-bold text-text">{behavior.active_users?.toLocaleString()}</p>
               <p className="text-xs text-text-tertiary mt-0.5">Active users (last 7 days)</p>
@@ -162,22 +177,44 @@ export default function UserBehavior() {
               <p className="text-2xl font-bold text-text">{behavior.avg_session}</p>
               <p className="text-xs text-text-tertiary mt-0.5">Avg session duration</p>
             </div>
+            <div>
+              <p className="text-2xl font-bold text-text">{behavior.session_count?.toLocaleString()}</p>
+              <p className="text-xs text-text-tertiary mt-0.5">Sessions measured</p>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-text">{behavior.event_count?.toLocaleString()}</p>
+              <p className="text-xs text-text-tertiary mt-0.5">Events received</p>
+            </div>
           </div>
         </Card>
       )}
 
       {/* Real drop-off table */}
-      {behavior?.drop_off_points?.length > 0 && (
+      {observedDropOffs.length > 0 && (
         <Card>
-          <h3 className="text-sm font-semibold text-text mb-4">Drop-off Points (real)</h3>
-          <Table columns={DROP_COLS} data={behavior.drop_off_points} />
+          <h3 className="text-sm font-semibold text-text mb-1">Observed Transitions</h3>
+          <p className="text-xs text-text-tertiary mb-4">
+            Inferred from event order until a critical flow is explicitly configured
+          </p>
+          <Table columns={DROP_COLS} data={observedDropOffs} />
+        </Card>
+      )}
+
+      {!hasRealEvents && behavior?.drop_off_points?.length > 0 && (
+        <Card>
+          <h3 className="text-sm font-semibold text-text mb-1">Configured flow waiting for events</h3>
+          <p className="text-sm text-text-secondary leading-relaxed">
+            Your flow is configured, but ShipSense will not show transition rows until at least one user reaches a measured step. This avoids treating `0 → 0` as product evidence.
+          </p>
         </Card>
       )}
 
       {/* Real top actions table */}
       {tableData.length > 0 && (
         <Card>
-          <h3 className="text-sm font-semibold text-text mb-4">Action Breakdown (real)</h3>
+          <h3 className="text-sm font-semibold text-text mb-4">
+            {isSample ? 'Action Breakdown (sample)' : 'Action Breakdown (real)'}
+          </h3>
           <Table columns={COLUMNS} data={tableData} />
         </Card>
       )}

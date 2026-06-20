@@ -7,6 +7,7 @@ import UserBehavior from './pages/dashboard/UserBehavior';
 import AIInsights from './pages/dashboard/AIInsights';
 import AskAgent from './pages/dashboard/AskAgent';
 import Settings from './pages/dashboard/Settings';
+import Experiments from './pages/dashboard/Experiments';
 
 export default function App() {
   return (
@@ -19,6 +20,7 @@ export default function App() {
           <Route path="behavior" element={<UserBehavior />} />
           <Route path="insights" element={<AIInsights />} />
           <Route path="ask" element={<AskAgent />} />
+          <Route path="experiments" element={<Experiments />} />
           <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>

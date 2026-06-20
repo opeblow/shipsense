@@ -4,22 +4,24 @@
   // currentScript works for the normal snippet; the querySelector fallback
   // covers programmatic injection (e.g. the demo page).
   var script = document.currentScript ||
-    document.querySelector('script[src*="novus.js"][data-app-id]') ||
-    document.querySelector('script[src*="novus.js"]');
+    document.querySelector('script[src*="shipsense-collector.js"][data-product-id]') ||
+    document.querySelector('script[src*="shipsense-collector.js"]');
 
   var apiUrl = (script && script.getAttribute('data-api-url')) ||
     (script && script.src ? new URL(script.src).origin : '');
-  var appId = window._novusAppId || (script && script.getAttribute('data-app-id'));
+  var appId = window._shipsenseProductId ||
+    (script && script.getAttribute('data-product-id'));
+  var collectorKey = window._shipsenseCollectorKey ||
+    (script && script.getAttribute('data-collector-key'));
 
-  if (!apiUrl || !appId || appId === 'YOUR_APP_ID') {
-    console.warn('[novus] missing/placeholder data-app-id or data-api-url — tracker idle');
+  if (!apiUrl || !appId || !collectorKey || appId === 'YOUR_PRODUCT_ID') {
+    console.warn('[ShipSense] missing product id, collector key, or API URL — collector idle');
     return;
   }
-  var productId = parseInt(appId, 10);
-  if (!productId) { console.warn('[novus] invalid app id'); return; }
-
   var ingestUrl = apiUrl.replace(/\/$/, '') + '/api/behavior/ingest';
-  var STORAGE_KEY = 'novus_visitor_id';
+  var STORAGE_KEY = 'shipsense_visitor_id';
+  var SESSION_KEY = 'shipsense_session';
+  var SESSION_TIMEOUT_MS = 30 * 60 * 1000;
 
   function uuid() {
     if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
@@ -34,37 +36,81 @@
     if (!userId) { userId = uuid(); localStorage.setItem(STORAGE_KEY, userId); }
   } catch (e) { userId = uuid(); }
 
+  function currentSessionId() {
+    var now = Date.now();
+    try {
+      var stored = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+      if (!stored || !stored.id || now - stored.lastActivity >= SESSION_TIMEOUT_MS) {
+        stored = { id: uuid(), lastActivity: now };
+      } else {
+        stored.lastActivity = now;
+      }
+      localStorage.setItem(SESSION_KEY, JSON.stringify(stored));
+      return stored.id;
+    } catch (e) {
+      return uuid();
+    }
+  }
+
   var queue = [];
+  var flushing = false;
 
   function enqueue(action, extra) {
     if (!action) return;
-    var ev = { action: String(action).slice(0, 120), user_id: userId, timestamp: new Date().toISOString() };
-    if (extra) ev.data = extra;
+    var ev = {
+      event_id: uuid(),
+      schema_version: 1,
+      action: String(action).slice(0, 120),
+      user_id: userId,
+      session_id: currentSessionId(),
+      timestamp: new Date().toISOString(),
+      page_url: location.origin + location.pathname,
+      properties: extra && typeof extra === 'object' ? extra : {}
+    };
     queue.push(ev);
     if (queue.length >= 20) flush();
   }
 
   function flush() {
-    if (!queue.length) return;
+    if (!queue.length || flushing) return;
     var events = queue.splice(0, queue.length);
+    flushing = true;
+
+    function restoreBatch() {
+      queue = events.concat(queue).slice(0, 200);
+    }
+
     try {
       // keepalive lets the request finish during page unload; CORS=* on the
       // backend allows the cross-origin preflight to succeed.
       fetch(ingestUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ product_id: productId, events: events }),
+        body: JSON.stringify({
+          product_id: String(appId),
+          collector_key: collectorKey,
+          events: events
+        }),
         keepalive: true,
         mode: 'cors',
-      }).catch(function () { /* fire-and-forget */ });
-    } catch (e) { /* ignore */ }
+      }).then(function (response) {
+        if (!response.ok) restoreBatch();
+      }).catch(function () {
+        restoreBatch();
+      }).finally(function () {
+        flushing = false;
+      });
+    } catch (e) {
+      restoreBatch();
+      flushing = false;
+    }
   }
 
-  // Public API (back-compat with window.Novus / window._novusQueue).
+  // Public API for manually recording product-specific actions.
   function track(action, extra) { enqueue(action, extra); }
-  window.Novus = { track: track, flush: flush };
+  window.ShipSense = { track: track, flush: flush };
 
-  var pre = window._novusQueue || [];
+  var pre = window._shipsenseQueue || [];
   while (pre.length) {
     var item = pre.shift();
     if (typeof item === 'string') enqueue(item);
@@ -75,12 +121,12 @@
     var node = el;
     for (var i = 0; node && i < 4; i++) {
       if (node.getAttribute) {
-        var tagged = node.getAttribute('data-novus');
+        var tagged = node.getAttribute('data-shipsense');
         if (tagged) return tagged;
         var tag = (node.tagName || '').toLowerCase();
         if (tag === 'a' || tag === 'button' || node.getAttribute('role') === 'button') {
-          var text = (node.innerText || node.textContent || '').trim().replace(/\s+/g, ' ');
-          return 'click: ' + (text ? text.slice(0, 40) : tag);
+          var stableName = node.getAttribute('id') || node.getAttribute('name');
+          return stableName ? 'click: ' + tag + '#' + stableName.slice(0, 40) : 'click: ' + tag;
         }
       }
       node = node.parentNode;

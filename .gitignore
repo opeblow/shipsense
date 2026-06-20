@@ -33,6 +33,12 @@ Thumbs.db
 *.log
 npm-debug.log*
 
+# Local planning/demo notes
+plan.md
+docs/demo-script.md
+docs/product-contract.md
+docs/current-weaknesses.md
+
 # Testing
 .coverage
 htmlcov/
